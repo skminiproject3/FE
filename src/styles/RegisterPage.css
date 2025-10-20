@@ -1,0 +1,108 @@
+/* 페이지 전체 (센터 정렬) */
+.register-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background: #ffffff;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+        Arial, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    color: #111;
+}
+
+/* 카드 박스 */
+.register-box {
+    width: 360px;
+    max-width: 92vw;
+    padding: 36px 28px 32px;
+    border: 1px solid #eaeaea;
+    border-radius: 12px;
+    background: #fff;
+    text-align: center;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.06);
+}
+
+/* 로고/브랜드 */
+.logo-section {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.logo-icon {
+    font-size: 40px;
+    line-height: 1;
+}
+
+.logo-text {
+    display: flex;
+    flex-direction: column;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+/* 제목 */
+.register-title {
+    margin: 12px 0 18px;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+}
+
+/* 폼 */
+.register-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* 라벨 + 인풋 한 줄 */
+.register-row {
+    display: grid;
+    grid-template-columns: 64px 1fr;
+    /* 라벨 좌측, 입력 우측 */
+    align-items: center;
+    gap: 12px;
+}
+
+.register-row label {
+    text-align: right;
+    color: #444;
+    font-size: 14px;
+}
+
+.register-row input {
+    height: 38px;
+    padding: 0 10px;
+    border: 1px solid #cfcfcf;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    background: #fff;
+}
+
+/* 버튼 */
+.register-btn {
+    margin-top: 8px;
+    width: 100%;
+    height: 44px;
+    border: none;
+    border-radius: 6px;
+    background: #0047ff;
+    color: #fff;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+.register-btn:hover {
+    background: #0039d1;
+}
+
+.register-btn[disabled],
+.register-btn[aria-disabled="true"] {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
