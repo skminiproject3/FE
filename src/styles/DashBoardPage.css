@@ -1,0 +1,55 @@
+.board-layout {
+    display: flex;
+    height: 100vh;
+    width: 100%;
+}
+
+.content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background-color: #fafafa;
+}
+
+.dashboard {
+    padding: 24px;
+}
+
+.dashboard h1 {
+    margin-bottom: 50px;
+}
+
+.card {
+    height: 90px;
+    background-color: #ffffff;
+    padding: 16px 20px;
+    margin-bottom: 30px;
+    border-radius: 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.card span {
+  font-size: 18px;  
+}
+
+.card button {
+  font-size: 18px;
+  font-weight: 500;
+  border: none;
+  background-color: transparent;
+  color: #222;
+  height: 40px;           
+  line-height: 40px;        
+  padding: 0 16px;           
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: center;        
+}
+
+
+.card button:hover {
+    background-color: #e8e8e8;
+}
