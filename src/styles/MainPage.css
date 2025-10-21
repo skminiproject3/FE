@@ -1,122 +1,162 @@
-.main-layout {
-    display: flex;
-    height: 100vh;
-    width: 100%;
+.upload-layout {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden; 
 }
 
-/* ===== 오른쪽 콘텐츠 ===== */
-.content {
+/* Sidebar 고정 */
+.sidebar {
+  flex-shrink: 0;       
+  height: 100vh;        
+  position: sticky;    
+  top: 0;
+}
+
+/* 오른쪽 콘텐츠만 스크롤 */
+.upload-content {
   flex: 1;
   display: flex;
   flex-direction: column;
   background-color: #fafafa;
-  padding: 40px 48px;
-  overflow-y: auto;
+  overflow-y: auto;     
 }
 
-.content h1 {
+.upload-board {
+  padding: 40px;
+}
+
+.upload-board h1 {
   font-size: 32px;
   font-weight: 700;
+  margin-bottom: 50px;
   color: #222;
-  margin-bottom: 48px;
 }
 
-/* ===============================
-   📁 업로드 박스
-=============================== */
 .upload-box {
+  height: 250px;
+  background-color: #ffffff;
+  padding: 16px 20px;
+  margin-bottom: 30px;
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
   border: 2px dashed #ccc;
-  border-radius: 12px;
-  padding: 60px 40px;
-  text-align: center;
-  background: #ffffff;
-  margin-bottom: 40px;
-  transition: border-color 0.25s, background-color 0.25s, box-shadow 0.25s;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: border-color 0.25s, background-color 0.25s;
 }
 
 .upload-box.dragging {
   background-color: #f0f8ff;
   border-color: #0066ff;
-  box-shadow: 0 0 16px rgba(0, 102, 255, 0.3);
 }
 
 .upload-icon {
-  font-size: 60px;
-  margin-bottom: 12px;
-  color: #0066ff;
+  font-size: 50px;
 }
 
 .upload-box p {
   font-size: 18px;
-  color: #333;
   margin: 0;
-}
-
-.or-text {
-  display: block;
-  color: #777;
-  margin-top: 8px;
-  font-size: 15px;
-}
-
-.select-file-btn {
-  display: inline-block;
-  margin-top: 16px;
-  padding: 10px 20px;
-  background-color: #e9f0ff;
-  color: #0066ff;
-  border-radius: 8px;
-  cursor: pointer;
-  font-weight: 500;
-  transition: background-color 0.25s, transform 0.15s ease;
-}
-
-.select-file-btn:hover {
-  background-color: #d2e3ff;
-  transform: translateY(-1px);
-}
-
-.file-name {
-  margin-top: 16px;
-  font-size: 16px;
-  font-weight: 500;
   color: #333;
 }
 
-/* ===============================
-   📚 챕터 요약
-=============================== */
-.chapter-summary {
-  margin-top: 40px;
+.upload-select-btn {
+  font-size: 14px;
+  margin-top: 1px;
+  padding: 8px 14px;
+  background-color: transparent;
+  color: #0066ff;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.25s;
+  font-weight: 500;
 }
 
-.section-title {
+.upload-select-btn:hover {
+  background-color: #d2e3ff;
+}
+
+.upload-summary {
+  margin-top: 20px;
+}
+
+.upload-section-title {
   font-weight: 700;
-  font-size: 20px;
+  font-size: 18px;
+  margin-bottom: 10px;
   color: #222;
-  margin-bottom: 16px;
 }
 
-.chapter-card {
-  border: 1.5px solid #aaa;
-  border-radius: 8px;
-  padding: 14px 18px;
-  margin-bottom: 12px;
-  background: #fff;
+.upload-card {
+  height: 90px;
+  background-color: #ffffff;
+  padding: 16px 20px;
+  margin-bottom: 30px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   transition: all 0.25s ease;
   cursor: pointer;
+  font-size: 17px;
+}
+
+.upload-card:hover {
+  background-color: #e8e8e8;
+}
+
+.upload-empty-text{
+  color: #666;
+  text-align: center;
+  margin-top: 15px;
   font-size: 16px;
-  color: #333;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  font-style: italic;
 }
 
-.chapter-card:hover {
-  border-color: #888;
-  background-color: #ffffff;
+/* 로딩 상태 스타일 */
+
+.loading-wrapper {
+  position: relative;
+  width: 80%;
+  height: 12px;
+  margin-top: 24px;
+  border-radius: 6px;
+  background: #eaeaea;
+  overflow: hidden;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.chapter-card.active {
-  background-color: #ffffff;
-  box-shadow: 0 0 10px rgba(255, 255, 255, 0.25);
+/* gradient progress bar */
+.loading-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #6a5af9, #ff00cc, #00c6ff);
+  background-size: 200% 100%;
+  animation: loadingMove 1.5s linear infinite;
+  transition: width 0.4s ease;
+  border-radius: 6px;
 }
+
+@keyframes loadingMove {
+  0% {
+    background-position: 0% 50%;
+  }
+  100% {
+    background-position: 200% 50%;
+  }
+}
+
+/* 텍스트 스타일 */
+.loading-text {
+  margin-top: 12px;
+  font-size: 15px;
+  font-weight: 600;
+  color: #555;
+  letter-spacing: 2px;
+  animation: fadeInOut 2s ease-in-out infinite;
+}
+

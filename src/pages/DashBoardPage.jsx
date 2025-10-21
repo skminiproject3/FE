@@ -46,7 +46,7 @@ function MainPage() {
 
           <div className="card">
             <span>완성된 퀴즈 수: <b>0건</b></span>
-            <button>📂 열기</button>
+             <button onClick={() => navigate('/quiz')}>📂 열기</button>
           </div>
 
           <div className="card">
