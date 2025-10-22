@@ -14,13 +14,6 @@
   color: #222;
 }
 
-.summary-title-file {
-  font-size: 22px;
-  font-weight: 600;
-  color: #555;
-  margin-left: 8px;
-}
-
 /* 리스트 스타일 */
 .summary-preview-list {
   list-style: none;
@@ -45,25 +38,97 @@
   box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
 }
 
-/* 챕터 제목 */
-.summary-chapter-title {
-  font-size: 19px;
-  font-weight: 700;
-  color: #222;
-  margin-bottom: 8px;
-}
-
-/* 요약 본문 */
-.summary-chapter-text {
-  font-size: 16px;
-  color: #444;
-  line-height: 1.6;
-}
-
 /* 에러 문구 */
 .summary-preview-error {
   margin-top: 30px;
   color: #d93025;
   font-weight: 500;
   font-size: 16px;
+}
+
+/* 🤖 AI 질문 섹션 */
+.ai-question-section {
+  margin-top: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+ .ai-question-section h2{
+  color: #222;
+  margin-left: 4px;
+}
+
+/* 입력창 + 답변이 들어있는 메인 카드 */
+.ai-question-box {
+  background: #fff;
+  border-radius: 16px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* 입력줄 */
+.ai-input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.ai-input-row input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 1.5px solid #ddd;
+  border-radius: 10px;
+  font-size: 15px;
+  outline: none;
+  transition: border 0.2s;
+}
+
+.ai-input-row input:focus {
+  border-color: #bdbdbd;
+}
+
+/* 버튼 */
+.ai-input-row button {
+  background: #bdbdbd;
+  color: #222;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.ai-input-row button:hover {
+  background: #909090;
+}
+
+.ai-input-row button:disabled {
+  background: #999;
+  cursor: not-allowed;
+}
+
+/* 답변 영역 */
+.ai-answer-card {
+  background: #fafafa;
+  border: 1px solid #ddd;
+  border-radius: 12px;
+  padding: 16px 18px;
+  line-height: 1.6;
+  color: #333;
+}
+
+.ai-answer-card h4 {
+  margin: 0 0 8px;
+  font-size: 17px;
+  color: #007bff;
+}
+
+.ai-answer-card p {
+  font-size: 15px;
+  white-space: pre-wrap;
 }
