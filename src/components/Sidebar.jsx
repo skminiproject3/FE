@@ -1,19 +1,21 @@
-import { NavLink, useNavigate } from 'react-router-dom';
-import '../styles/Sidebar.css';
+import { NavLink, useNavigate } from "react-router-dom";
+import "../styles/Sidebar.css";
 
 function Sidebar() {
-  const navigate = useNavigate(); // ✅ 올바른 위치
+  const navigate = useNavigate();
 
   const handleLogout = () => {
-    // ✅ 필요 시 인증 토큰이나 사용자 정보 제거
-    localStorage.removeItem('token');
-    sessionStorage.clear();
+    // ✅ JWT 토큰/만료 저장 값 삭제
+    localStorage.removeItem("accessToken");
+    localStorage.removeItem("refreshToken");
+    localStorage.removeItem("accessTokenExpiresAt");
+
+    sessionStorage.clear(); // (선택 사항)
 
     // ✅ 로그인 페이지로 이동
-    navigate('/login');
+    navigate("/login", { replace: true });
   };
 
-  // ✅ return은 여기! (컴포넌트 반환 부분)
   return (
     <aside className="sidebar">
       {/* === 상단 타이틀 === */}
@@ -27,10 +29,7 @@ function Sidebar() {
 
       {/* === 메뉴 === */}
       <nav className="nav">
-        <NavLink
-          to="/board"
-          className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-        >
+        <NavLink to="/board" className={({ isActive }) => `nav-item ${isActive ? "active" : ""}`}>
           <span className="icon" aria-hidden>🏠</span> 대시보드
         </NavLink>
 
