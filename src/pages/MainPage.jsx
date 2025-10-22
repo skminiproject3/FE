@@ -8,21 +8,20 @@ function MainPage() {
   const [file, setFile] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
   const [status, setStatus] = useState('');
-  const [summaries, setSummaries] = useState([]);
   const [progress, setProgress] = useState(0);
   const navigate = useNavigate();
 
-  // ✅ ✅ (1) 로그인한 사용자만 접근 가능하도록 설정
+  // ✅ 로그인 안 했을 경우 접근 제한
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
       alert('로그인이 필요한 서비스입니다.');
-      navigate('/login'); // 로그인 안 되어 있으면 로그인 페이지로 이동
+      navigate('/login');
     }
   }, [navigate]);
 
   // ================================
-  // 📁 (2) 파일 업로드 MOCK 기능
+  // 📁 (1) 파일 업로드 MOCK 기능
   // ================================
   const handleUpload = async (selectedFile = file) => {
     if (!selectedFile) return alert('📁 파일을 선택해주세요!');
@@ -35,15 +34,11 @@ function MainPage() {
       setProgress((p) => (p >= 90 ? p : p + 10));
     }, 400);
 
+    // 3초 후 업로드 완료 처리
     setTimeout(() => {
       clearInterval(interval);
       setProgress(100);
       setStatus('COMPLETED');
-      setSummaries([
-        { chapter: 1, summary_text: 'AI의 기본 개념 및 역사' },
-        { chapter: 2, summary_text: '머신러닝의 주요 알고리즘 개요' },
-        { chapter: 3, summary_text: '딥러닝과 신경망 구조 이해' },
-      ]);
     }, 3000);
   };
 
@@ -79,7 +74,7 @@ function MainPage() {
         <div className="upload-board">
           <h1>파일 업로드</h1>
 
-          {/* 🔹 업로드 영역 */}
+          {/* 업로드 영역 */}
           <div
             className={`upload-box ${isDragging ? 'dragging' : ''}`}
             onDrop={handleDrop}
@@ -104,24 +99,25 @@ function MainPage() {
             {/* 로딩바 */}
             {status === 'PROCESSING' && (
               <div className="loading-wrapper">
-                <div className="loading-bar" style={{ width: `${progress}%` }} />
+                <div
+                  className="loading-bar"
+                  style={{ width: `${progress}%` }}
+                />
                 <p className="loading-text">L O A D I N G</p>
               </div>
             )}
           </div>
 
-          {/* 🔹 챕터 요약 */}
+          {/* 업로드 완료 메시지 */}
           <div className="upload-summary">
-            <h2>챕터별 요약</h2>
+            <h2>분석 결과</h2>
 
-            {status === 'COMPLETED' && summaries.length > 0 ? (
-              summaries.map((s, idx) => (
-                <div key={idx} className="upload-card active">
-                  <b>챕터 {s.chapter}</b> — {s.summary_text}
-                </div>
-              ))
+            {status === 'COMPLETED' ? (
+              <div className="upload-finish-message">
+                요약 & 퀴즈 생성 완료!
+              </div>
             ) : (
-              <p className="upload-empty-text">요약이 없습니다.</p>
+              <p className="upload-empty-text">분석이 없습니다.</p>
             )}
           </div>
         </div>

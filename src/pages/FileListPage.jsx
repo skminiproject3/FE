@@ -1,38 +1,50 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Sidebar from "../components/Sidebar";
 import "../styles/global.css";
-import "../styles/FileListPage.css";
+import "../styles/FileListpage.css";
+import Sidebar from "../components/Sidebar";
 
 function FileListPage() {
+  const [files, setFiles] = useState([]);
   const navigate = useNavigate();
 
-  const files = [
-    { id: 1, title: "자료구조 10장" },
-    { id: 2, title: "AI 개론" },
-    { id: 3, title: "운영체제 5장" },
-  ];
+  useEffect(() => {
+    const demoProgress = [
+      { contentId: 1, title: "자료구조 10장" },
+      { contentId: 2, title: "AI 개론" },
+      { contentId: 3, title: "운영체제 5장" },
+    ];
+    setFiles(demoProgress);
+  }, []);
 
+  // ✅ 파일 클릭 시 summary-preview 페이지로 이동
   const handleFileClick = (file) => {
-    // 클릭 시 해당 파일 ID를 기반으로 summary-preview 페이지로 이동
-    navigate(`/summary-preview/${file.id}`, { state: { title: file.title } });
+    navigate(`/summary-preview/${file.contentId}`, {
+      state: { title: file.title },
+    });
   };
 
   return (
-    <div className="summary-preview-layout">
+    <div className="file-board-layout">
       <Sidebar />
-      <div className="summary-preview-content">
-        <h1>업로드된 파일 목록</h1>
-        <ul className="summary-preview-list">
-          {files.map((file) => (
-            <li
-              key={file.id}
-              className="summary-preview-item"
-              onClick={() => handleFileClick(file)}
-            >
-              <span className="summary-chapter-title">📁 {file.title}</span>
-            </li>
-          ))}
-        </ul>
+      <div className="file-content">
+        <h1 className="file-title">업로드된 파일 목록</h1>
+
+        {files.length === 0 ? (
+          <p className="file-empty">업로드된 파일이 없습니다.</p>
+        ) : (
+          <ul className="file-list">
+            {files.map((item) => (
+              <li
+                key={item.contentId}
+                className="file-item"
+                onClick={() => handleFileClick(item)}
+              >
+                📁 {item.title}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

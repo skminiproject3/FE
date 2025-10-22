@@ -41,9 +41,9 @@ function Sidebar() {
           <span className="icon" aria-hidden>📚</span> AI 분석 결과
         </NavLink>
 
-        <NavLink to="/result" className="nav-item">
+        {/* <NavLink to="/result" className="nav-item">
           <span className="icon" aria-hidden>📈</span> 퀴즈 결과
-        </NavLink>
+        </NavLink> */}
       </nav>
 
       {/* === 하단 로그아웃 === */}

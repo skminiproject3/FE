@@ -85,12 +85,12 @@ function DashBoardPage() {
                   }`}
                 >
                   <h4>{item.title}</h4>
-                  {/* <div className="progress-bar">
+                  <div className="progress-bar">
                     <div
                       className="progress-fill"
                       style={{ width: `${item.accuracy_rate}%` }}
                     ></div>
-                  </div> */}
+                  </div>
                   <p>정답률: {item.accuracy_rate}%</p>
                 </div>
               ))}
@@ -110,14 +110,14 @@ function DashBoardPage() {
             <span>
               완성된 퀴즈 수: <b>{quizCount}건</b>
             </span>
-            <button onClick={() => navigate("/quiz")}>📂 열기</button>
+            {/* <button onClick={() => navigate("/file")}>📂 열기</button> */}
           </div>
 
           {/* 퀴즈 결과 */}
-          <div className="card">
+          {/* <div className="card">
             <span>퀴즈 결과 리포트</span>
-            <button onClick={() => navigate("/result")}>📂 열기</button>
-          </div>
+            <button onClick={() => navigate("/file")}>📂 열기</button>
+          </div> */}
         </div>
       </div>
     </div>

@@ -14,17 +14,15 @@ function SummaryPreviewPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 📘 대시보드에 있던 파일 목록(더미 데이터)
     const demoProgress = [
       { contentId: 1, title: "자료구조 10장" },
       { contentId: 2, title: "운영체제 5장" },
       { contentId: 3, title: "AI 개론" },
     ];
 
-    // 📘 챕터 요약 더미 데이터
     const demoSummaries = {
       1: [
-        { chapter: 1, summary_text: "배열과 연결 리스트의 차이점" },
+        { chapter: 1, summary_text: "배열과 연결 리스트의 차이점 배열과 연결 리스트의 차이점 배열과 연결 리스트의 차이점" },
         { chapter: 2, summary_text: "스택과 큐의 동작 원리" },
         { chapter: 3, summary_text: "트리 탐색 및 순회 알고리즘" },
       ],
@@ -36,11 +34,10 @@ function SummaryPreviewPage() {
       3: [
         { chapter: 1, summary_text: "AI의 기본 개념 및 역사" },
         { chapter: 2, summary_text: "머신러닝의 주요 알고리즘 개요" },
-        { chapter: 3, summary_text: "딥러닝과 신경망 구조 이해" },
+        { chapter: 3, summary_text: "딥러닝과 신경망 구조 이해 및 실제 응용 사례 분석" },
       ],
     };
 
-    // 📌 title 찾기
     const matchedContent = demoProgress.find(
       (item) => String(item.contentId) === String(contentId)
     );
@@ -52,9 +49,8 @@ function SummaryPreviewPage() {
     }
 
     setTitle(matchedContent.title);
-
-    // 📌 챕터 리스트 불러오기
     const summariesData = demoSummaries[contentId];
+
     if (!summariesData) {
       setError("❌ 요약 데이터가 없습니다.");
     } else {
@@ -71,20 +67,31 @@ function SummaryPreviewPage() {
       <Sidebar />
       <div className="summary-preview-content">
         <h1>
-          📘 챕터별 요약 <span className="summary-title-file">— {title}</span>
+          📁 {title}
+          <span className="summary-title-file"></span>
         </h1>
+        <h2>요약</h2>
 
         <ul className="summary-preview-list">
-          {summaries.map((s) => (
-            <li
-              key={s.chapter}
-              className="summary-preview-item"
-              onClick={() => navigate(`/summary/${contentId}/${s.chapter}`)}
-            >
-              <h2 className="summary-chapter-title">챕터 {s.chapter}</h2>
-              <p className="summary-chapter-text">{s.summary_text}</p>
-            </li>
-          ))}
+          {summaries.map((s) => {
+            // 긴 문장은 35자까지만 표시 + "..." 추가
+            const truncated =
+              s.summary_text.length > 30
+                ? s.summary_text.slice(0, 35) + "..."
+                : s.summary_text;
+
+            return (
+              <li
+                key={s.chapter}
+                className="summary-preview-item"
+                onClick={() => navigate(`/summary/${contentId}/${s.chapter}`)}
+              >
+                <div className="summary-line">
+                  <b>챕터 {s.chapter}</b> — {truncated}
+                </div>
+              </li>
+            );
+          })}
         </ul>
 
         {error && <p className="summary-preview-error">{error}</p>}

@@ -90,21 +90,6 @@
   color: #222;
 }
 
-.upload-card {
-  height: 90px;
-  background-color: #ffffff;
-  padding: 16px 20px;
-  margin-bottom: 30px;
-  border-radius: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 10px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-  transition: all 0.25s ease;
-  cursor: pointer;
-  font-size: 17px;
-}
 
 .upload-card:hover {
   background-color: #e8e8e8;
@@ -160,3 +145,10 @@
   animation: fadeInOut 2s ease-in-out infinite;
 }
 
+.upload-finish-message {
+  font-size: 22px;
+  font-weight: 600;
+  color: #2e7d32;
+  text-align: center;
+  margin-top: 20px;
+}

@@ -5,12 +5,10 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import QuizPage from './pages/QuizPage';
 import QuizResultPage from './pages/QuizResultPage';
-import PrivateRoute from './components/PrivateRoute';  // ✅ 추가
-
-import './styles/DashBoardPage.css';
+import PrivateRoute from './components/PrivateRoute';  
 import FileListPage from './pages/FileListPage';
 import SummaryPreviewPage from './pages/SummaryPreviewPage';
-import './styles/SummaryPage.css';
+import SummaryPage from './pages/SummaryPage';
 
 function App() {
   return (
@@ -27,8 +25,14 @@ function App() {
       <Route path="/quiz" element={<PrivateRoute element={<QuizPage />} />} />
       <Route path="/result" element={<PrivateRoute element={<QuizResultPage />} />} />
       <Route path="/file" element={<PrivateRoute element={<FileListPage />} />} />
-      <Route path="/summary-preview/:contentId" element={<SummaryPreviewPage />} />
-      {/* <Route path="/summary" element={<SummaryPage />} />  */}
+      <Route
+        path="/summary-preview/:contentId"
+        element={<PrivateRoute element={<SummaryPreviewPage />} />}
+      />
+      <Route
+        path="/summary/:contentId/:chapter"
+        element={<PrivateRoute element={<SummaryPage />} />}
+      />
     </Routes>
   );
 }
