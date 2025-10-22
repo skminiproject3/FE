@@ -12,9 +12,15 @@ function SummaryPreviewPage() {
   const [summaries, setSummaries] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+
+  // ✅ AI 질문 상태
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
+
+  // ✅ 퀴즈 옵션 상태 (추가됨)
+  const [difficulty, setDifficulty] = useState("중");
+  const [count, setCount] = useState(10);
 
   useEffect(() => {
     const demoProgress = [
@@ -63,6 +69,25 @@ function SummaryPreviewPage() {
     setLoading(false);
   }, [contentId]);
 
+  // ✅ 퀴즈 시작 함수 (QuizPage로 이동 + state 전달)
+  const startQuiz = () => {
+    try {
+      localStorage.setItem("latestContentId", String(contentId));
+    } catch (e) {
+      console.log(e);
+    }
+
+    navigate("/quiz", {
+      state: {
+        difficulty,
+        count,
+        contentId,
+        title,
+      },
+    });
+  };
+
+  // ✅ AI 질문하기 함수
   const handleAsk = async () => {
     if (!question.trim()) return;
     setAsking(true);
@@ -75,7 +100,6 @@ function SummaryPreviewPage() {
         body: JSON.stringify({ question, contentId }),
       });
       const data = await res.json();
-
       if (!data.answer || data.confidence < 0.4) {
         const webRes = await fetch("http://localhost:3000/api/websearch", {
           method: "POST",
@@ -105,29 +129,70 @@ function SummaryPreviewPage() {
         <h2>요약</h2>
 
         <ul className="summary-preview-list">
-          {summaries.map((s) => {
-            const truncated =
-              s.summary_text.length > 30
-                ? s.summary_text.slice(0, 35) + "..."
-                : s.summary_text;
-
-            return (
-              <li
-                key={s.chapter}
-                className="summary-preview-item"
-                onClick={() => navigate(`/summary/${contentId}/${s.chapter}`)}
-              >
-                <div className="summary-line">
-                  <b>챕터 {s.chapter}</b> — {truncated}
-                </div>
-              </li>
-            );
-          })}
+          {summaries.map((s) => (
+            <li
+              key={s.chapter}
+              className="summary-preview-item"
+              onClick={() => navigate(`/summary/${contentId}/${s.chapter}`)}
+            >
+              <div className="summary-line">
+                <b>챕터 {s.chapter}</b> — {s.summary_text.length > 35 ? s.summary_text.slice(0, 35) + "..." : s.summary_text}
+              </div>
+            </li>
+          ))}
         </ul>
 
         {error && <p className="summary-preview-error">{error}</p>}
 
-        {/* AI 질문 섹션 */}
+        {/* ✅ ✅ 여기서부터 퀴즈 선택 섹션 추가됨 */}
+        <div className="sp-quiz-panel">
+          <h3 className="sp-quiz-title">📝 퀴즈 풀기</h3>
+
+          <div className="sp-controls-row">
+            {/* 난이도 선택 */}
+            <fieldset className="sp-fieldset">
+              <legend>난이도</legend>
+              {["하", "중", "상"].map((lv) => (
+                <label key={lv} className="sp-radio">
+                  <input
+                    type="radio"
+                    name="difficulty"
+                    value={lv}
+                    checked={difficulty === lv}
+                    onChange={(e) => setDifficulty(e.target.value)}
+                  />
+                  <span>{lv}</span>
+                </label>
+              ))}
+            </fieldset>
+
+            {/* 문제 개수 선택 */}
+            <fieldset className="sp-fieldset">
+              <legend>문제 개수</legend>
+              {[3, 5, 8, 10].map((n) => (
+                <label key={n} className="sp-radio">
+                  <input
+                    type="radio"
+                    name="qcount"
+                    value={n}
+                    checked={count === n}
+                    onChange={(e) => setCount(Number(e.target.value))}
+                  />
+                  <span>{n}문항</span>
+                </label>
+              ))}
+            </fieldset>
+
+            {/* 버튼 */}
+            <div className="sp-actions">
+              <button className="sp-btn sp-btn-primary" onClick={startQuiz}>
+                🔍 퀴즈 풀기
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ✅ 기존 AI 질문 섹션 유지 */}
         <div className="ai-question-section">
           <h2>🤖 AI에게 질문하기</h2>
           <div className="ai-question-box">

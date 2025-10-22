@@ -1,111 +1,95 @@
-// src/pages/QuizResultPage.jsx
-import { useEffect, useState } from "react";
-import '../styles/global.css';
-import '../styles/DashBoardPage.css';
-import '../styles/QuizResultPage.css';
-import Sidebar from '../components/Sidebar';
+import { useLocation, useNavigate } from "react-router-dom";
+import Sidebar from "../components/Sidebar";
+import "../styles/QuizResultPage.css";
 
 function QuizResultPage() {
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState('');
-  const [result, setResult] = useState({
-    score: 0,
-    accuracy: 0,
-    totalCount: 0,
-    items: []
-  });
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { title = "퀴즈 결과", score = 0, total = 0, detail = [] } = location.state || {};
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch('/api/quiz-results/latest');
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        setResult({
-          score: data.score ?? 0,
-          accuracy: data.accuracy ?? 0,
-          totalCount: data.totalCount ?? (data.items?.length || 0),
-          items: Array.isArray(data.items) ? data.items : []
-        });
-      } catch {
-        // 🔹 Mock Data
-        setResult({
-          score: 87,
-          accuracy: 0.8,
-          totalCount: 5,
-          items: [
-            { id: 1, quizTitle: '1번퀴즈', number: 1, correct: true, question: 'TEA 알고리즘에 대한 설명으로 옳지 않은 것은?', selected: 'D. 아주 복잡한 블록 암호 사용' },
-            { id: 2, quizTitle: '1번퀴즈', number: 2, correct: false, question: 'TEA 알고리즘에 대한 설명으로 옳지 않은 것은?', selected: 'D. 아주 복잡한 블록 암호 사용' },
-            { id: 3, quizTitle: '1번퀴즈', number: 3, correct: true, question: 'TEA 알고리즘에 대한 설명으로 옳지 않은 것은?', selected: 'D. 아주 복잡한 블록 암호 사용' }
-          ]
-        });
-        setErr('❗ 실제 결과를 불러오지 못해 예시 데이터를 표시합니다.');
-      } finally {
-        setLoading(false);
-      }
-    })();
-  }, []);
+  if (!location.state) {
+    return (
+      <div className="board-layout">
+        <Sidebar />
+        <div className="content">
+          <h2>⚠ 결과 데이터가 없습니다. 먼저 퀴즈를 풀어주세요.</h2>
+          <button onClick={() => navigate("/main")}>메인으로 이동</button>
+        </div>
+      </div>
+    );
+  }
 
-  const percent = Math.round((result.accuracy || 0) * 100);
+  const accuracy = total > 0 ? Math.round((score / total) * 100) : 0;
 
   return (
     <div className="board-layout">
       <Sidebar />
       <div className="content quiz-result-page">
         <div className="quiz-result-container">
-          <h1>퀴즈 결과</h1>
+          + <h1>{title || "퀴즈 결과"}</h1>
 
-          {/* ✅ Result Summary Card */}
+          {/* ✅ 점수 요약 카드 */}
           <div className="result-card summary-card">
-            <div className="result-gauge" style={{ ['--p']: result.score + '%' }}>
+            <div className="result-gauge" style={{ ["--p"]: `${accuracy}%` }}>
               <div className="gauge-inner">
-                <strong>{result.score}</strong>
-                <span>점</span>
+                <strong>{score}</strong>
+                <span>/ {total}</span>
               </div>
             </div>
-
             <div className="summary-stats">
-              <div className="stat-row">
-                <span>정답률:</span>
-                <b>{percent}%</b>
-              </div>
-              <div className="stat-row">
-                <span>퀴즈 문항 수:</span>
-                <b>{result.totalCount}개</b>
-              </div>
-              {err && <div className="stat-error">{err}</div>}
+              <div className="stat-row"><span>정답률:</span><b>{accuracy}%</b></div>
+              <div className="stat-row"><span>총 문항:</span><b>{total}개</b></div>
             </div>
           </div>
 
-          {/* ✅ 상세 문항 */}
+          {/* ✅ 문항별 상세 결과 */}
           <h2 className="detail-title">문항별 결과</h2>
           <div className="result-list">
-            {loading && <div className="result-card">불러오는 중…</div>}
-
-            {!loading && result.items.map((it) => (
-              <div
-                key={it.id ?? `${it.quizTitle}-${it.number}`}
-                className={`result-card qa-item ${it.correct ? 'ok' : 'bad'}`}
-              >
+            {detail.map((d, idx) => (
+              <div key={d.questionId} className={`result-card qa-item ${d.isCorrect ? "ok" : "bad"}`}>
                 <div className="qa-header">
-                  <span className={`badge ${it.correct ? 'ok' : 'bad'}`}>
-                    {it.correct ? '✔' : '✖'}
+                  <span className={`badge ${d.isCorrect ? "ok" : "bad"}`}>
+                    {d.isCorrect ? "✔" : "✖"}
                   </span>
-                  <b>{it.quizTitle} {it.number}번</b>
+                  <b>Q{idx + 1}</b>
                 </div>
 
                 <div className="qa-body">
-                  <div className="question">{it.question}</div>
-                  {it.selected && (
-                    <div className="selected-answer">선택한 답: {it.selected}</div>
-                  )}
+                  <div className="question">{d.question}</div>
+
+                  {/* ✅ 보기 출력 */}
+                  <ul className="options-list">
+                    {d.options?.map((opt) => (
+                      <li
+                        key={opt.id}
+                        className={
+                          d.correctOptionIds.includes(opt.id)
+                            ? "option correct"
+                            : d.userOptionIds.includes(opt.id)
+                            ? "option user"
+                            : "option"
+                        }
+                      >
+                        {opt.id}. {opt.text}
+                      </li>
+                    ))}
+                  </ul>
+
+                  {/* ✅ 정답 / 내 답 */}
+                  <div className="correct-answer">✅ 정답: {d.correctOptionIds.join(", ")}</div>
+                  <div className="selected-answer">
+                    📝 내 답: {Array.isArray(d.userOptionIds) ? d.userOptionIds.join(", ") : d.userOptionIds}
+                  </div>
                 </div>
               </div>
             ))}
+          </div>
 
-            {!loading && result.items.length === 0 && (
-              <div className="result-card">표시할 결과가 없습니다.</div>
-            )}
+          {/* ✅ 메인으로 돌아가기 버튼만 */}
+          <div className="qr-actions">
+            <button className="qr-btn qr-btn-primary" onClick={() => navigate("/main")}>
+              메인으로 돌아가기
+            </button>
           </div>
         </div>
       </div>

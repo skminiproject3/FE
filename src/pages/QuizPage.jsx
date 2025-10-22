@@ -1,182 +1,172 @@
 // src/pages/QuizPage.jsx
-import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import '../styles/global.css';
-import '../styles/DashBoardPage.css';
-import '../styles/QuizPage.css';
+import { useEffect, useState } from "react";
+import { useNavigate, useLocation } from "react-router-dom";
+import Sidebar from "../components/Sidebar";
+import "../styles/QuizPage.css";
 
-import Sidebar from '../components/Sidebar';
+// ✅ 퀴즈 데이터 (난이도 포함, 총 30문제 예시)
+import { MOCK_QUIZ_BANK } from "../utils/mockQuizBank";
 
-function QuizPage() {
+export default function QuizPage() {
   const navigate = useNavigate();
+  const { state } = useLocation();
 
-  // 업로드 상태
-  const [isDragging, setIsDragging] = useState(false);
-  const [progress, setProgress] = useState(0);
-  const [uploading, setUploading] = useState(false);
-  const fileInputRef = useRef(null);
+  // ✅ SummaryPreviewPage에서 전달된 값
+  const difficulty = state?.difficulty || "중"; // 상/중/하
+  const questionCount = state?.count || 5;      // 3, 5, 8, 10
+  const contentId = state?.contentId || null;   // 파일 기준 ID
+  const title = state?.title || "자동 생성 퀴즈";
 
-  // 퀴즈 목록
-  const [quizzes, setQuizzes] = useState([]);
+  const [quiz, setQuiz] = useState(null);
+  const [answers, setAnswers] = useState({});
 
   useEffect(() => {
-    // 필요시 백엔드에서 퀴즈 목록을 가져옴
-    // API 주소는 환경에 맞게 수정
-    async function fetchQuizzes() {
-      try {
-        const res = await fetch("http://localhost:3000/quizzes");
-        if (!res.ok) throw new Error("퀴즈 목록 조회 실패");
-        const data = await res.json();
-        setQuizzes(Array.isArray(data) ? data : []);
-      } catch (e) {
-        console.error(e);
-        // 임시 목업
-        setQuizzes([
-          { id: 1, title: "1번 퀴즈" },
-          { id: 2, title: "2번 퀴즈" },
-          { id: 3, title: "3번 퀴즈" },
-        ]);
-      }
-    }
-    fetchQuizzes();
-  }, []);
+    // 1) 난이도에 맞는 문제만 필터링
+    const filtered = MOCK_QUIZ_BANK.filter((q) => q.difficulty === difficulty);
 
-  const handleBrowseClick = () => fileInputRef.current?.click();
+    // 2) 랜덤 섞은 후 → questionCount 만큼 자르기
+    const selected = filtered.sort(() => Math.random() - 0.5).slice(0, questionCount);
 
-  const handleFiles = (files) => {
-    if (!files || files.length === 0) return;
-    const file = files[0];
-    uploadFile(file);
+    // 3) 형식 맞춰 퀴즈 데이터로 저장
+    const generatedQuiz = {
+      id: `quiz-${Date.now()}`,
+      title: `${title} — (${difficulty} / ${questionCount}문항)`,
+      questions: selected,
+    };
+    setQuiz(generatedQuiz);
+
+    // 4) 정답 저장용 상태 초기화
+    const init = {};
+    selected.forEach((q) => {
+      init[q.id] = q.type === "multi" ? [] : "";
+    });
+    setAnswers(init);
+  }, [difficulty, questionCount, title]);
+
+  // ✅ 단일 선택
+  const handleSingle = (qid, optId) => {
+    setAnswers((prev) => ({ ...prev, [qid]: optId }));
   };
 
-  // 업로드 (진행률 표시를 위해 XMLHttpRequest 사용)
-  const uploadFile = (file) => {
-    const url = "http://localhost:3000/quizzes/upload"; // 업로드 API로 수정
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", url, true);
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const p = Math.round((e.loaded / e.total) * 100);
-        setProgress(p);
-      }
-    };
-
-    xhr.onloadstart = () => {
-      setUploading(true);
-      setProgress(0);
-    };
-
-    xhr.onloadend = () => {
-      setUploading(false);
-      // 완료 후 목록 새로고침
-      // 성공 응답 코드에 맞게 분기
-      if (xhr.status >= 200 && xhr.status < 300) {
-        // 업로드 후 퀴즈 목록 리로드
-        (async () => {
-          try {
-            const res = await fetch("http://localhost:8080/quizzes");
-            const data = await res.json();
-            setQuizzes(Array.isArray(data) ? data : []);
-          } catch {
-            /* ignore */
-          }
-        })();
-      } else {
-        console.error("업로드 실패:", xhr.status, xhr.responseText);
-      }
-    };
-
-    xhr.onerror = () => {
-      setUploading(false);
-      console.error("업로드 중 오류 발생");
-    };
-
-    xhr.send(formData);
+  // ✅ 복수 선택
+  const handleMulti = (qid, optId, checked) => {
+    setAnswers((prev) => {
+      const current = Array.isArray(prev[qid]) ? prev[qid] : [];
+      const updated = checked
+        ? [...current, optId]
+        : current.filter((x) => x !== optId);
+      return { ...prev, [qid]: updated };
+    });
   };
 
-  // 드래그 앤 드롭
-  const onDragOver = (e) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-  const onDragLeave = () => setIsDragging(false);
-  const onDrop = (e) => {
-    e.preventDefault();
-    setIsDragging(false);
-    handleFiles(e.dataTransfer.files);
+  // ✅ 모든 문제에 답했는지 체크
+  const allAnswered = quiz?.questions?.every((q) => {
+    const ans = answers[q.id];
+    return q.type === "multi"
+      ? Array.isArray(ans) && ans.length > 0
+      : typeof ans === "string" && ans.trim() !== "";
+  });
+
+  // ✅ 제출 → 결과 계산 + 결과 페이지 이동
+  const handleSubmit = () => {
+    if (!quiz) return;
+
+    const detail = quiz.questions.map((q) => {
+      const userAnswers = Array.isArray(answers[q.id]) ? answers[q.id] : [answers[q.id]];
+      const isCorrect =
+        userAnswers.sort().join(",") === q.correctOptionIds.slice().sort().join(",");
+
+      return {
+        questionId: q.id,
+        question: q.text,
+        options: q.options,               // ✅ 보기 전체
+        correctOptionIds: q.correctOptionIds,
+        userOptionIds: userAnswers,
+        isCorrect,
+      };
+    });
+
+    const score = detail.filter((d) => d.isCorrect).length;
+    const total = detail.length;
+
+    alert("제출되었습니다!");
+
+    navigate("/result", {
+      state: {
+        title: quiz.title,
+        difficulty,
+        count: questionCount,
+        contentId,
+        score,
+        total,
+        detail,
+      },
+    });
   };
 
   return (
-    <div className="board-layout">
+    <div className="qp-layout">
       <Sidebar />
-      <div className="content">
-        <div className="dashboard">
-          <h1>퀴즈 업로드</h1>
+      <main className="qp-content">
+        <div className="qp-container">
 
-          {/* 업로드 박스 */}
-          <div
-            className={`upload-box ${isDragging ? 'dragging' : ''}`}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onDrop={onDrop}
-            onClick={handleBrowseClick}
-            role="button"
-            aria-label="파일 업로드"
-            tabIndex={0}
-          >
-            <div className="upload-icon">⬆️</div>
-            <div className="upload-text">
-              여기에 파일을 끌어놓으세요
-              <br />
-              <small>또는 <u>파일 선택</u></small>
-            </div>
+          {!quiz ? (
+            <p>퀴즈 불러오는 중...</p>
+          ) : (
+            <>
+              <h2 className="qp-title">{quiz.title}</h2>
 
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.txt,.csv"
-              style={{ display: "none" }}
-              onChange={(e) => handleFiles(e.target.files)}
-            />
+              <div className="qp-list">
+                {quiz.questions.map((q, idx) => (
+                  <div key={q.id} className="qp-card qp-item">
+                    <div className="qp-item-head">
+                      <span className="qp-index">Q{idx + 1}</span>
+                      <span>{q.text}</span>
+                      {q.type === "multi" && <span className="qp-hint">(복수 선택)</span>}
+                    </div>
 
-            {/* 진행률 바 */}
-            {uploading && (
-              <div className="progress-wrap" aria-live="polite">
-                <div className="progress-bar" style={{ width: `${progress}%` }} />
-                <div className="progress-label">LOADING {progress}%</div>
+                    <div className="qp-options">
+                      {q.options.map((opt) => (
+                        <label key={opt.id} className="qp-option">
+                          <input
+                            type={q.type === "multi" ? "checkbox" : "radio"}
+                            name={`q-${q.id}`}
+                            checked={
+                              q.type === "multi"
+                                ? answers[q.id]?.includes(opt.id)
+                                : answers[q.id] === opt.id
+                            }
+                            onChange={(e) =>
+                              q.type === "multi"
+                                ? handleMulti(q.id, opt.id, e.target.checked)
+                                : handleSingle(q.id, opt.id)
+                            }
+                          />
+                          {opt.text}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-            )}
-          </div>
 
-          {/* 퀴즈 목록 */}
-          <h2 style={{ marginTop: "24px" }}>퀴즈</h2>
-          <div className="quiz-list">
-            {quizzes.map((q) => (
-              <div key={q.id} className="card quiz-item">
-                <span>{q.title}</span>
-                <button onClick={() => navigate(`/quiz/${q.id}`)}>열기</button>
-              </div>
-            ))}
-            {quizzes.length === 0 && (
-              <div className="card">
-                <span>등록된 퀴즈가 없습니다.</span>
-              </div>
-            )}
-          </div>
-
-          {/* 결과 페이지로 이동 예시 */}
-          <div className="card" style={{ marginTop: "16px" }}>
-            <span>퀴즈 결과</span>
-            <button onClick={() => navigate('/result')}>📊 결과 보기</button>
-          </div>
+              {/* 버튼 영역 */}
+              <section className="qp-card qp-actions">
+                <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
+                  ← 돌아가기
+                </button>
+                <button
+                  className="qp-btn qp-btn-primary"
+                  disabled={!allAnswered}
+                  onClick={handleSubmit}
+                >
+                  제출하기
+                </button>
+              </section>
+            </>
+          )}
         </div>
-      </div>
+      </main>
     </div>
   );
 }
-
-export default QuizPage;

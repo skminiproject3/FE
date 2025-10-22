@@ -1,0 +1,255 @@
+.qp-layout {
+  display: grid;
+  grid-template-columns: 280px 1fr; /* Sidebar + Content */
+  min-height: 100vh;
+  background: #f6f7fb;
+}
+
+.qp-content {
+  padding: 24px;
+}
+
+.qp-container {
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+.qp-title {
+  margin: 0 0 16px 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+
+/* 카드 공통 */
+.qp-card {
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 14px;
+  padding: 16px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+}
+
+/* 헤더 */
+.qp-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.qp-header-title {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.qp-header-meta {
+  font-size: 12px;
+  opacity: 0.7;
+}
+
+/* 문제 리스트 */
+.qp-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* 각 문항 카드 */
+.qp-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.qp-item-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.qp-index {
+  display: inline-block;
+  min-width: 40px;
+  height: 28px;
+  line-height: 28px;
+  text-align: center;
+  font-weight: 700;
+  border-radius: 999px;
+  border: 1px solid rgba(0,0,0,0.08);
+  background: rgba(0,0,0,0.03);
+}
+
+.qp-question {
+  font-weight: 600;
+}
+
+/* (복수 선택) 힌트 */
+.qp-hint {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-left: 50px; /* 번호 폭만큼 들여쓰기 */
+  margin-top: -2px;
+}
+
+/* 보기 영역 */
+.qp-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.qp-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(0,0,0,0.08);
+  border-radius: 10px;
+  background: #fff;
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+  cursor: pointer;
+}
+
+.qp-option input {
+  width: 16px;
+  height: 16px;
+}
+
+.qp-option-label {
+  line-height: 1.3;
+}
+
+.qp-option:hover {
+  border-color: rgba(0,0,0,0.16);
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+/* 하단 액션 */
+.qp-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.qp-btn {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: none;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.qp-btn[disabled],
+.qp-btn[aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.qp-btn-primary {
+  background: #111827;
+  color: #fff;
+}
+
+.qp-btn-primary:hover:not([disabled]) {
+  filter: brightness(0.95);
+}
+
+.qp-btn-secondary {
+  background: #eef1f4;
+  color: #111827;
+}
+
+.qp-btn-secondary:hover {
+  filter: brightness(0.98);
+}
+
+.qp-controls-wrapper {
+  margin-bottom: 20px;
+  padding: 20px;
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid rgba(0,0,0,0.06);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+
+.qp-controls-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.qp-controls-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto; /* 난이도 | 문제 개수 | 버튼 */
+  gap: 16px;
+  align-items: end;
+}
+
+.qp-fieldset {
+  border: 1px dashed rgba(0,0,0,0.1);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.qp-fieldset legend {
+  font-size: 12px;
+  opacity: 0.7;
+  padding: 0 6px;
+}
+
+.qp-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 12px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+.qp-radio:hover {
+  background: rgba(0,0,0,0.05);
+  border-radius: 6px;
+  padding: 4px;
+}
+
+.qp-generate-btn {
+  padding: 10px 16px;
+  background: #111827;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.qp-generate-btn:hover {
+  filter: brightness(0.95);
+}
+
+/* 모바일 대응 */
+@media (max-width: 768px) {
+  .qp-controls-row {
+    grid-template-columns: 1fr; /* 한 줄씩 세로 배치 */
+  }
+}
+
+/* 반응형 */
+@media (max-width: 960px) {
+  .qp-layout {
+    grid-template-columns: 240px 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .qp-layout {
+    grid-template-columns: 1fr; /* Sidebar가 상단으로 올 수 있다면 여기는 프로젝트 규칙에 맞게 조정 */
+  }
+  .qp-content {
+    padding: 16px;
+  }
+  .qp-hint {
+    margin-left: 44px;
+  }
+}
