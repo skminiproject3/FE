@@ -1,38 +1,39 @@
 .board-layout {
-    display: flex;
-    min-height: 100vh;
-    width: 100%;
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
 }
 
 .content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    background-color: #fafafa;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background-color: #fafafa;
 }
 
 .dashboard {
-    padding: 40px;
+  padding: 40px;
 }
 
 .dashboard h1 {
-    margin-bottom: 50px;
+  margin-bottom: 50px;
 }
 
+/* 공용 카드 스타일 */
 .card {
-    height: 90px;
-    background-color: #ffffff;
-    padding: 16px 20px;
-    margin-bottom: 30px;
-    border-radius: 10px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  height: 90px;
+  background-color: #ffffff;
+  padding: 16px 20px;
+  margin-bottom: 30px;
+  border-radius: 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
 .card span {
-  font-size: 18px;  
+  font-size: 18px;
 }
 
 .card button {
@@ -41,15 +42,96 @@
   border: none;
   background-color: transparent;
   color: #222;
-  height: 40px;           
-  line-height: 40px;        
-  padding: 0 16px;           
+  height: 40px;
+  line-height: 40px;
+  padding: 0 16px;
   border-radius: 6px;
   cursor: pointer;
-  text-align: center;        
+  text-align: center;
 }
 
-
 .card button:hover {
-    background-color: #e8e8e8;
+  background-color: #e8e8e8;
+}
+
+/* =======================
+   학습 현황 (정답률 전용)
+======================= */
+.progress-section {
+  margin-bottom: 30px;
+}
+
+.progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.nav-buttons button {
+  background: #f4f4f4;
+  border: none;
+  border-radius: 6px;
+  font-size: 18px;
+  margin-left: 6px;
+  cursor: pointer;
+  width: 36px;
+  height: 36px;
+  transition: background 0.2s;
+}
+
+.nav-buttons button:hover {
+  background: #e0e0e0;
+}
+
+/* 카드 행 */
+.progress-row {
+  display: flex;
+  gap: 30px;
+}
+
+/* 개별 카드 */
+.progress-card-item {
+  flex: 1;
+  background: #ffffff;
+  border-radius: 14px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  padding: 14px;
+  height: 200px;
+  transition: box-shadow 0.2s ease;
+  cursor: default; /* 클릭 불가 */
+}
+
+.progress-card-item:hover {
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.15);
+}
+
+/* 제목 */
+.progress-card-item h4 {
+  margin: 10px 0 8px;
+  font-size: 16px;
+  color: #333;
+}
+
+/* 정답률 바 */
+.progress-bar {
+  background: #e0e0e0;
+  border-radius: 6px;
+  height: 8px;
+  width: 100%;
+  margin: 6px 0;
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: linear-gradient(90deg, #43a047, #66bb6a);
+  height: 100%;
+  border-radius: 6px;
+  min-width: 2px; /* 끝단 잘림 방지 */
+}
+
+/* 정답률 100%일때 강조 */
+.progress-card-item.excellent {
+  border: 2px solid #4CAF50;
+  background: #f4fff4;
 }

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import '../styles/global.css';
 import '../styles/MainPage.css';
@@ -9,9 +10,19 @@ function MainPage() {
   const [status, setStatus] = useState('');
   const [summaries, setSummaries] = useState([]);
   const [progress, setProgress] = useState(0);
+  const navigate = useNavigate();
+
+  // ✅ ✅ (1) 로그인한 사용자만 접근 가능하도록 설정
+  useEffect(() => {
+    const token = localStorage.getItem('accessToken');
+    if (!token) {
+      alert('로그인이 필요한 서비스입니다.');
+      navigate('/login'); // 로그인 안 되어 있으면 로그인 페이지로 이동
+    }
+  }, [navigate]);
 
   // ================================
-  // 📁 파일 업로드 (AI 서버 미구현용 mock)
+  // 📁 (2) 파일 업로드 MOCK 기능
   // ================================
   const handleUpload = async (selectedFile = file) => {
     if (!selectedFile) return alert('📁 파일을 선택해주세요!');
@@ -20,18 +31,14 @@ function MainPage() {
     setStatus('PROCESSING');
     setProgress(10);
 
-    // ⏳ 가짜 진행률 시뮬레이션
     const interval = setInterval(() => {
       setProgress((p) => (p >= 90 ? p : p + 10));
     }, 400);
 
-    // 3초 후 완료 처리
     setTimeout(() => {
       clearInterval(interval);
       setProgress(100);
       setStatus('COMPLETED');
-
-      // ✅ 더미 요약 데이터
       setSummaries([
         { chapter: 1, summary_text: 'AI의 기본 개념 및 역사' },
         { chapter: 2, summary_text: '머신러닝의 주요 알고리즘 개요' },
@@ -40,12 +47,10 @@ function MainPage() {
     }, 3000);
   };
 
-  // 드래그 앤 드롭 & 자동 업로드
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
       setFile(selectedFile);
-      // 한 프레임 뒤 업로드 자동 실행
       setTimeout(() => handleUpload(selectedFile), 100);
     }
   };
@@ -74,7 +79,7 @@ function MainPage() {
         <div className="upload-board">
           <h1>파일 업로드</h1>
 
-          {/* 업로드 박스 */}
+          {/* 🔹 업로드 영역 */}
           <div
             className={`upload-box ${isDragging ? 'dragging' : ''}`}
             onDrop={handleDrop}
@@ -99,16 +104,13 @@ function MainPage() {
             {/* 로딩바 */}
             {status === 'PROCESSING' && (
               <div className="loading-wrapper">
-                <div
-                  className="loading-bar"
-                  style={{ width: `${progress}%` }}
-                />
+                <div className="loading-bar" style={{ width: `${progress}%` }} />
                 <p className="loading-text">L O A D I N G</p>
               </div>
             )}
           </div>
 
-          {/* 요약 카드 */}
+          {/* 🔹 챕터 요약 */}
           <div className="upload-summary">
             <h2>챕터별 요약</h2>
 

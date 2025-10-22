@@ -1,0 +1,70 @@
+.summary-preview-layout {
+  display: flex;
+  min-height: 100vh;
+  background: #fafafa;
+}
+
+.summary-preview-content {
+  flex: 1;
+  padding: 40px;
+}
+
+.summary-preview-content h1 {
+  font-size: 26px;
+  margin-bottom: 30px;
+  color: #222;
+}
+
+.summary-title-file {
+  font-size: 22px;
+  font-weight: 600;
+  color: #555;
+  margin-left: 8px;
+}
+
+/* 리스트 스타일 */
+.summary-preview-list {
+  list-style: none;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* 개별 카드 */
+.summary-preview-item {
+  background: #fff;
+  padding: 20px 24px;
+  border-radius: 14px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.summary-preview-item:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.12);
+}
+
+/* 챕터 제목 */
+.summary-chapter-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: #222;
+  margin-bottom: 8px;
+}
+
+/* 요약 본문 */
+.summary-chapter-text {
+  font-size: 16px;
+  color: #444;
+  line-height: 1.6;
+}
+
+/* 에러 문구 */
+.summary-preview-error {
+  margin-top: 30px;
+  color: #d93025;
+  font-weight: 500;
+  font-size: 16px;
+}
