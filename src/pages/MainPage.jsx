@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import '../styles/global.css';
 import '../styles/MainPage.css';
+import { uploadContent } from '../api/contentApi'; 
 
 function MainPage() {
   const [file, setFile] = useState(null);
@@ -11,7 +12,7 @@ function MainPage() {
   const [progress, setProgress] = useState(0);
   const navigate = useNavigate();
 
-  // ✅ 로그인 안 했을 경우 접근 제한
+  // 로그인 안 했을 경우 접근 제한
   useEffect(() => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
@@ -20,28 +21,33 @@ function MainPage() {
     }
   }, [navigate]);
 
-  // ================================
-  // 📁 (1) 파일 업로드 MOCK 기능
-  // ================================
+  // 실제 파일 업로드 기능 (진행률 반영)
   const handleUpload = async (selectedFile = file) => {
-    if (!selectedFile) return alert('📁 파일을 선택해주세요!');
-    console.log('[Mock] 파일 업로드 시작:', selectedFile.name);
+    if (!selectedFile) return alert('파일을 선택해주세요!');
+    console.log('[Upload] 파일 업로드 시작:', selectedFile.name);
 
     setStatus('PROCESSING');
-    setProgress(10);
+    setProgress(0);
 
-    const interval = setInterval(() => {
-      setProgress((p) => (p >= 90 ? p : p + 10));
-    }, 400);
+    try {
+      // 일명 전체(확장자 포함)를 title로 전달
+      const result = await uploadContent(
+        selectedFile,
+        selectedFile.name,
+        (percent) => setProgress(percent) // ← 실시간 반영
+      );
 
-    // 3초 후 업로드 완료 처리
-    setTimeout(() => {
-      clearInterval(interval);
+      console.log('업로드 성공:', result);
       setProgress(100);
       setStatus('COMPLETED');
-    }, 3000);
+    } catch (error) {
+      console.error('업로드 실패:', error);
+      setStatus('FAILED');
+      alert('파일 업로드 중 오류가 발생했습니다.');
+    }
   };
 
+  // 파일 선택 이벤트
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
@@ -50,6 +56,7 @@ function MainPage() {
     }
   };
 
+  // 드래그 앤 드롭 업로드
   const handleDrop = (e) => {
     e.preventDefault();
     setIsDragging(false);
@@ -64,8 +71,10 @@ function MainPage() {
     e.preventDefault();
     setIsDragging(true);
   };
+
   const handleDragLeave = () => setIsDragging(false);
 
+  // UI 렌더링
   return (
     <div className="upload-layout">
       <Sidebar />
@@ -96,26 +105,23 @@ function MainPage() {
 
             {file && <p className="upload-file-name">📁 {file.name}</p>}
 
-            {/* 로딩바 */}
+            {/* 실제 진행률 기반 로딩바 */}
             {status === 'PROCESSING' && (
               <div className="loading-wrapper">
-                <div
-                  className="loading-bar"
-                  style={{ width: `${progress}%` }}
-                />
-                <p className="loading-text">L O A D I N G</p>
+                <div className="loading-bar" style={{ width: `${progress}%` }} />
+                <p className="loading-text">{progress}%</p>
               </div>
             )}
           </div>
 
-          {/* 업로드 완료 메시지 */}
+          {/* 업로드 결과 표시 */}
           <div className="upload-summary">
             <h2>분석 결과</h2>
 
             {status === 'COMPLETED' ? (
-              <div className="upload-finish-message">
-                요약 & 퀴즈 생성 완료!
-              </div>
+              <div className="upload-finish-message">요약 & 퀴즈 생성 완료!</div>
+            ) : status === 'FAILED' ? (
+              <div className="upload-finish-message error">업로드 실패!</div>
             ) : (
               <p className="upload-empty-text">분석이 없습니다.</p>
             )}
