@@ -1,0 +1,4 @@
+node_modules
+Dockerfile
+dist/
+강의자료/
