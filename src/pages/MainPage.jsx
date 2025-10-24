@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import '../styles/global.css';
 import '../styles/MainPage.css';
-import { uploadContent } from '../api/contentApi'; 
+import { uploadAndSummarize } from '../api/contentApi';
 
 function MainPage() {
   const [file, setFile] = useState(null);
@@ -31,10 +31,11 @@ function MainPage() {
 
     try {
       // 일명 전체(확장자 포함)를 title로 전달
-      const result = await uploadContent(
+      const result = await uploadAndSummarize(
         selectedFile,
         selectedFile.name,
-        (percent) => setProgress(percent) // ← 실시간 반영
+        (percent) => setProgress(percent), // 업로드 진행률
+        null // chapter 없으면 null
       );
 
       console.log('업로드 성공:', result);
