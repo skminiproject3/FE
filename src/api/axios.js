@@ -2,9 +2,12 @@
 import axios from "axios";
 import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from "../utils/auth";
 
+// ✅ 환경변수 사용 (없으면 기본값 사용)
+const BASE_URL = import.meta.env.VITE_APIURL || "http://localhost:8080/api";
+
 const api = axios.create({
-  baseURL: "http://localhost:8080/api", // 필요 시 수정
-  withCredentials: false, // Bearer 방식이므로 false
+  baseURL: BASE_URL,
+  withCredentials: false, // Bearer Token 방식
 });
 
 // 요청 인터셉터: 토큰 자동 첨부
