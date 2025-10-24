@@ -63,10 +63,8 @@ api.interceptors.response.use(
         const refreshToken = getRefreshToken();
         if (!refreshToken) throw new Error("No refresh token");
 
-        const resp = await axios.post(
-          "http://localhost:8080/api/auth/reissue",
-          { refreshToken } // JwtTokenProvider 기준, refresh만 있으면 됨
-        );
+        const reissueUrl = `${BASE_URL}/auth/reissue`;
+        const resp = await axios.post(reissueUrl, { refreshToken });
 
         // 백엔드 TokenResponse: { accessToken, refreshToken, expiresIn }
         saveTokens(resp.data);
