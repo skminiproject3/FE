@@ -1,129 +1,236 @@
 // src/pages/SummaryPreviewPage.jsx
-import { useEffect, useState } from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import pyapi from "../api/pyApi";               // ✅ FastAPI 호출용
+import { useEffect, useMemo, useState } from "react";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import Sidebar from "../components/Sidebar";
+import api from "../api/axios";      // baseURL: http://localhost:8080/api
 import "../styles/global.css";
 import "../styles/SummaryPreviewPage.css";
 
-function SummaryPreviewPage() {
-  const { contentId } = useParams();
+/** 🔧 원본 PDF 경로가 없을 때 테스트용 폴백 */
+const DEV_FALLBACK_PDF_MAP = {
+  "1": "uploaded_pdfs/c78286fc-f0fa-4ec9-abd8-350a171889f3.pdf",
+  "2": "uploaded_pdfs/533cf776-958d-41bf-a464-3623b22ec499.pdf",
+};
+
+/** 응답 파서(백엔드 키 이름이 바뀌어도 안전하게 처리) */
+const getText = (r) =>
+  (r?.answer ?? r?.summary_text ?? r?.summaryText ?? r?.fullSummary ?? r?.text ?? r?.summary ?? "").toString();
+
+const getScope = (r) => (r?.scope ?? r?.source_type ?? "").toString().toLowerCase(); // "in_pdf" | "out_of_scope" | "web"
+const getScore = (r) => {
+  const n = Number(r?.score ?? r?.relevance ?? r?.confidence);
+  return Number.isFinite(n) ? n : null;
+};
+const getSources = (r) => (Array.isArray(r?.sources) ? r.sources : []);
+
+/** 요약 응답에서 PDF 경로 후보들을 최대한 뽑아낸다 */
+function extractPdfPathsFromSummaryResponse(data) {
+  const bag = new Set();
+
+  // 단일 키들
+  const single = data?.pdf_path ?? data?.pdfPath ?? data?.path ?? data?.ai_server_path ?? data?.uploaded_pdf;
+  if (typeof single === "string" && single.trim()) bag.add(single.replace(/\\/g, "/"));
+
+  // 배열 키들
+  const arrs = [
+    data?.pdf_paths,
+    data?.pdfPaths,
+    data?.paths,
+    data?.source_paths,
+    data?.sourcePaths,
+  ].filter(Array.isArray);
+
+  arrs.forEach((arr) =>
+    arr.forEach((p) => typeof p === "string" && p.trim() && bag.add(p.replace(/\\/g, "/")))
+  );
+
+  // 객체 배열 안의 키들 (예: items[].pdf_path, chapters[].path 등)
+  const objArrays = [data?.items, data?.chapters, data?.summaries, data?.sources].filter(Array.isArray);
+  objArrays.forEach((arr) =>
+    arr.forEach((o) => {
+      const p =
+        o?.pdf_path ??
+        o?.pdfPath ??
+        o?.path ??
+        o?.source_path ??
+        o?.sourcePath ??
+        o?.ai_server_path ??
+        o?.uploaded_pdf;
+      if (typeof p === "string" && p.trim()) bag.add(p.replace(/\\/g, "/"));
+    })
+  );
+
+  return Array.from(bag);
+}
+
+export default function SummaryPreviewPage() {
+  const { contentId: rawId } = useParams();
+  const contentId = String(rawId ?? "");
+  const { state } = useLocation();
   const navigate = useNavigate();
 
-  const [title, setTitle] = useState("");
-  const [summaries, setSummaries] = useState([]);
-  const [error, setError] = useState("");
+  // 타이틀/원본 경로는 state 우선(없으면 비워둠—요약에서 자동 감지)
+  const [title] = useState(state?.title ?? `콘텐츠 #${contentId}`);
+  const [uploadedPdfPath] = useState(() => {
+    const raw =
+      state?.uploadedPdfPath || state?.aiServerPath || state?.uploaded_pdf || state?.uploadedPdf || "";
+    return typeof raw === "string" ? raw.replace(/\\/g, "/") : "";
+  });
+
+  // 전체 요약 + 감지된 PDF 경로
+  const [fullSummary, setFullSummary] = useState("");
+  const [detectedPdfPaths, setDetectedPdfPaths] = useState([]); // 요약 응답에서 자동 추출
   const [loading, setLoading] = useState(true);
+  const [info, setInfo] = useState("");
+  const [errMsg, setErrMsg] = useState("");
 
-  // ✅ AI 질문 상태
-  const [question, setQuestion] = useState("");
-  const [answer, setAnswer] = useState("");
-  const [asking, setAsking] = useState(false);
-
-  // ✅ 퀴즈 옵션 상태
+  // 퀴즈
   const [difficulty, setDifficulty] = useState("중");
   const [count, setCount] = useState(10);
 
-  // ✅ 선택된 챕터의 PDF 경로들
-  const [selectedPaths, setSelectedPaths] = useState([]);
+  // AI 질문
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [answerMode, setAnswerMode] = useState(""); // "pdf" | "web"
+  const [answerScore, setAnswerScore] = useState(null);
+  const [answerSources, setAnswerSources] = useState([]);
+  const [asking, setAsking] = useState(false);
 
+  /** 최종 사용할 PDF 경로 결정 우선순위:
+   *  state.uploadedPdfPath → 요약 응답에서 감지 → DEV_FALLBACK → 없음
+   */
+  const resolvedPdfPaths = useMemo(() => {
+    if (uploadedPdfPath) return [uploadedPdfPath];
+    if (detectedPdfPaths.length > 0) return detectedPdfPaths;
+    if (DEV_FALLBACK_PDF_MAP[contentId]) return [DEV_FALLBACK_PDF_MAP[contentId]];
+    return [];
+  }, [uploadedPdfPath, detectedPdfPaths, contentId]);
+
+  // ✅ 전체 요약 로드 (GET /api/contents/{id}/summarize) + PDF 경로 자동 감지
   useEffect(() => {
-    // 📘 대시보드에 있던 파일 목록(더미 데이터)
-    const demoProgress = [
-      { contentId: 1, title: "자료구조 10장" },
-      { contentId: 2, title: "운영체제 5장" },
-      { contentId: 3, title: "AI 개론" },
-    ];
+    let ignore = false;
+    (async () => {
+      setLoading(true);
+      setErrMsg("");
+      setInfo("");
 
-    // 📘 챕터 요약 더미 + 각 챕터에 해당 PDF 경로 예시(서버 저장 경로에 맞춰 바꿔도 됨)
-    const demoSummaries = {
-      1: [
-        { chapter: 1, summary_text: "배열과 연결 리스트의 차이점", pdfPath: "data/ds/ch01.pdf" },
-        { chapter: 2, summary_text: "스택과 큐의 동작 원리",       pdfPath: "data/ds/ch02.pdf" },
-        { chapter: 3, summary_text: "트리 탐색 및 순회 알고리즘",   pdfPath: "data/ds/ch03.pdf" },
-      ],
-      2: [
-        { chapter: 1, summary_text: "프로세스와 스레드의 기본 개념", pdfPath: "data/os/ch01.pdf" },
-        { chapter: 2, summary_text: "CPU 스케줄링 알고리즘의 종류",  pdfPath: "data/os/ch02.pdf" },
-        { chapter: 3, summary_text: "데드락 예방 및 회피",           pdfPath: "data/os/ch03.pdf" },
-      ],
-      3: [
-        { chapter: 1, summary_text: "AI의 기본 개념 및 역사",        pdfPath: "data/ai/ch01.pdf" },
-        { chapter: 2, summary_text: "머신러닝 주요 알고리즘 개요",   pdfPath: "data/ai/ch02.pdf" },
-        { chapter: 3, summary_text: "딥러닝과 신경망 구조",          pdfPath: "data/ai/ch03.pdf" },
-      ],
-    };
+      try {
+        const { data } = await api.get(`/contents/${contentId}/summarize`, {
+          headers: { Accept: "application/json" },
+        });
 
-    const matchedContent = demoProgress.find(
-      (item) => String(item.contentId) === String(contentId)
-    );
+        // 요약 텍스트
+        setFullSummary(getText(data).trim());
 
-    if (!matchedContent) {
-      setError("❌ 해당 콘텐츠의 요약 정보를 찾을 수 없습니다.");
-      setLoading(false);
-      return;
-    }
+        // 요약 응답에서 PDF 경로 감지
+        const paths = extractPdfPathsFromSummaryResponse(data);
+        if (!ignore && paths.length > 0) setDetectedPdfPaths(paths);
 
-    setTitle(matchedContent.title);
-
-    const summariesData = demoSummaries[contentId];
-    if (!summariesData) {
-      setError("❌ 요약 데이터가 없습니다.");
-      setSummaries([]);
-    } else {
-      setSummaries(summariesData);
-    }
-
-    setSelectedPaths([]); // 페이지 이동/재진입 시 초기화
-    setLoading(false);
+        if (!ignore) setInfo("전체 요약을 불러왔습니다.");
+      } catch (e) {
+        if (!ignore) {
+          const s = e?.response?.status;
+          const d =
+            e?.response?.data?.message || e?.response?.data?.error || e?.message || "전체 요약을 불러오지 못했습니다.";
+          setErrMsg(`(${s ?? "ERR"}) ${d}`);
+          setFullSummary("");
+          setDetectedPdfPaths([]);
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    })();
+    return () => { ignore = true; };
   }, [contentId]);
 
-  // ✅ 퀴즈 시작 (QuizPage로 이동 + state 전달)
-  const startQuiz = () => {
-    try {
-      localStorage.setItem("latestContentId", String(contentId));
-    } catch (e) {
-      console.log(e);
-    }
-
-    navigate("/quiz", {
-      state: { difficulty, count, contentId, title, pdfPaths: selectedPaths,},
-    });
-  };
-
-  // ✅ 챕터 선택 토글
-  const togglePath = (pdfPath) => {
-    setSelectedPaths((prev) =>
-      prev.includes(pdfPath) ? prev.filter((p) => p !== pdfPath) : [...prev, pdfPath]
-    );
-  };
-
-  // ✅ AI 질문하기
+  // 🤖 AI 질문: /api/contents/{id}/ask
+  //  - 1차: force_web=false (PDF 우선)
+  //  - 2차: 범위 밖/저신뢰/실패 → force_web=true (웹)
   const handleAsk = async () => {
-    if (!question.trim()) return;
+    const q = question.trim();
+    if (!q) return;
+
+    const pdf_paths = resolvedPdfPaths.map((p) => p.replace(/\\/g, "/"));
+
     setAsking(true);
     setAnswer("AI가 답변을 생성 중입니다...");
+    setAnswerMode("");
+    setAnswerScore(null);
+    setAnswerSources([]);
+
+    // 내부 함수: 웹 폴백 실행
+    const askWeb = async () => {
+      const { data: webRes } = await api.post(`/contents/${contentId}/ask`, {
+        question: q,
+        force_web: true,
+      });
+      setAnswer(getText(webRes) || "결과가 없습니다.");
+      setAnswerMode("web");
+      setAnswerScore(getScore(webRes));
+      setAnswerSources(getSources(webRes));
+    };
 
     try {
-      // FastAPI /question/ 호출
-      const { data } = await pyapi.post("/question/", {
-        question,
-        // db에서 pdf 경로 가져오는걸로..?
-        pdf_paths: ["data/ch02_암호 기초.pdf"],
+      // PDF 경로가 없으면 곧장 웹으로
+      if (pdf_paths.length === 0) {
+        await askWeb();
+        return;
+      }
+
+      // 1) PDF 기반
+      const { data: pdfRes } = await api.post(`/contents/${contentId}/ask`, {
+        question: q,
+        force_web: false,
+        pdf_paths,
       });
 
-      // 응답 형태에 맞게 표시
-      setAnswer(data?.answer ?? JSON.stringify(data, null, 2));
+      const scope1 = getScope(pdfRes);  // "in_pdf" | "out_of_scope" ...
+      const score1 = getScore(pdfRes);  // 0~1 (없으면 null)
+      const text1 = getText(pdfRes);
+      const srcs1 = getSources(pdfRes);
+
+      const confidentEnough = score1 == null ? true : score1 >= 0.55;
+      const inPdf = scope1.includes("in_pdf") || scope1.includes("pdf");
+
+      if (inPdf && confidentEnough && text1) {
+        setAnswer(text1);
+        setAnswerMode("pdf");
+        setAnswerScore(score1);
+        setAnswerSources(srcs1);
+      } else {
+        // 2) 웹 폴백
+        await askWeb();
+      }
     } catch (err) {
       console.error(err);
-      const msg =
-        err?.response?.data?.detail ||
-        err?.message ||
-        "질문 처리 중 오류가 발생했습니다.";
-      setAnswer("⚠️ " + msg);
+      // PDF 단계에서 에러가 났다면 웹으로 한 번 더 시도
+      try {
+        await askWeb();
+      } catch (err2) {
+        const detail =
+          err2?.response?.data?.detail ||
+          err2?.response?.data?.message ||
+          err?.response?.data?.detail ||
+          err?.response?.data?.message ||
+          err2?.message ||
+          err?.message ||
+          "질문 처리 중 오류가 발생했습니다.";
+        setAnswer("⚠️ " + detail);
+        setAnswerMode("");
+        setAnswerScore(null);
+        setAnswerSources([]);
+      }
     } finally {
       setAsking(false);
     }
+  };
+
+  // 📝 퀴즈 시작
+  const startQuiz = () => {
+    try { localStorage.setItem("latestContentId", String(contentId)); } catch { alert("퀴즈생성오류"); }
+    navigate("/quiz", {
+      state: { difficulty, count, contentId, title, pdfPaths: resolvedPdfPaths },
+    });
   };
 
   if (loading) return <p>불러오는 중...</p>;
@@ -134,47 +241,39 @@ function SummaryPreviewPage() {
 
       <div className="summary-preview-content">
         <h1>📁 {title}</h1>
-        <h2>요약</h2>
 
-        <ul className="summary-preview-list">
-          {summaries.map((s) => (
-            <li
-              key={s.chapter}
-              className="summary-preview-item"
-              onClick={() => navigate(`/summary/${contentId}/${s.chapter}`)}
-            >
-              <div className="summary-line">
-                <b>챕터 {s.chapter}</b> —{" "}
-                {s.summary_text.length > 35
-                  ? s.summary_text.slice(0, 35) + "..."
-                  : s.summary_text}
-              </div>
+        {info && <p style={{ marginTop: 8, fontSize: 12, opacity: 0.8 }}>{info}</p>}
 
-              {/* ✅ 이 챕터 PDF를 RAG 근거로 쓸지 선택 */}
-              <label className="pdf-check">
-                <input
-                  type="checkbox"
-                  checked={selectedPaths.includes(s.pdfPath)}
-                  onChange={(e) => {
-                    e.stopPropagation(); // 카드 클릭 이동 막기
-                    togglePath(s.pdfPath);
-                  }}
-                />
-                <span style={{ marginLeft: 6 }}>이 챕터 PDF 사용</span>
-                <small style={{ marginLeft: 8, opacity: 0.6 }}>({s.pdfPath})</small>
-              </label>
-            </li>
-          ))}
-        </ul>
+        {/* 감지된/사용될 PDF 경로 안내 */}
+        <div className="ai-selected-info" style={{ marginTop: 8 }}>
+          {(resolvedPdfPaths.length > 0 || DEV_FALLBACK_PDF_MAP[contentId]) && (
+            <div className="ai-selected-info" style={{ marginTop: 8 }}>
+              {resolvedPdfPaths.length > 0 ? (
+                <small>질문/퀴즈에 사용할 PDF: {resolvedPdfPaths.join(", ")}</small>
+              ) : (
+                <small>원본 없음 → 임시 경로 사용: {DEV_FALLBACK_PDF_MAP[contentId]}</small>
+              )}
+            </div>
+          )}
 
-        {error && <p className="summary-preview-error">{error}</p>}
+        </div>
 
-        {/* ✅ 퀴즈 선택 섹션 */}
+        {errMsg && <p className="summary-preview-error">{errMsg}</p>}
+
+        {/* ✅ 전체 요약 */}
+        <h2 style={{ marginTop: 16 }}>전체 요약</h2>
+        {fullSummary ? (
+          <div className="summary-body" style={{ marginTop: 8 }}>
+            <pre style={{ whiteSpace: "pre-wrap", margin: 0 }}>{fullSummary}</pre>
+          </div>
+        ) : (
+          <p style={{ opacity: 0.7 }}>표시할 요약이 없습니다.</p>
+        )}
+
+        {/* 📝 퀴즈 패널 */}
         <div className="sp-quiz-panel">
           <h3 className="sp-quiz-title">📝 퀴즈 풀기</h3>
-
           <div className="sp-controls-row">
-            {/* 난이도 선택 */}
             <fieldset className="sp-fieldset">
               <legend>난이도</legend>
               {["하", "중", "상"].map((lv) => (
@@ -191,7 +290,6 @@ function SummaryPreviewPage() {
               ))}
             </fieldset>
 
-            {/* 문제 개수 선택 */}
             <fieldset className="sp-fieldset">
               <legend>문제 개수</legend>
               {[3, 5, 8, 10].map((n) => (
@@ -208,7 +306,6 @@ function SummaryPreviewPage() {
               ))}
             </fieldset>
 
-            {/* 버튼 */}
             <div className="sp-actions">
               <button className="sp-btn sp-btn-primary" onClick={startQuiz}>
                 🔍 퀴즈 풀기
@@ -217,14 +314,14 @@ function SummaryPreviewPage() {
           </div>
         </div>
 
-        {/* ✅ AI 질문 섹션 */}
+        {/* 🤖 AI 질문 섹션 */}
         <div className="ai-question-section">
           <h2>🤖 AI에게 질문하기</h2>
           <div className="ai-question-box">
             <div className="ai-input-row">
               <input
                 type="text"
-                placeholder="이 파일(선택한 챕터) 내용에 대해 물어보세요..."
+                placeholder="이 파일 내용 또는 관련 주제에 대해 물어보세요..."
                 value={question}
                 onChange={(e) => setQuestion(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAsk()}
@@ -234,19 +331,54 @@ function SummaryPreviewPage() {
               </button>
             </div>
 
-            {/* 선택 상태 안내 */}
-            <div className="ai-selected-info">
-              {selectedPaths.length > 0 ? (
-                <small>선택된 PDF: {selectedPaths.join(", ")}</small>
-              ) : (
-                <small>선택된 PDF 없음 → 웹검색으로 보완될 수 있어요</small>
-              )}
-            </div>
+            {(answerMode || answerSources.length > 0 || answerScore != null) && (
+              <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                {answerMode && (
+                  <span className={`badge ${answerMode === "pdf" ? "badge-pdf" : "badge-web"}`}>
+                    {answerMode === "pdf" ? "PDF 기반" : "웹 검색 기반"}
+                  </span>
+                )}
+                {answerScore != null && (
+                  <span className="badge badge-neutral">score: {answerScore.toFixed(2)}</span>
+                )}
+              </div>
+            )}
 
             {answer && (
               <div className="ai-answer-card">
                 <h4>AI의 답변</h4>
                 <pre style={{ whiteSpace: "pre-wrap" }}>{answer}</pre>
+
+                {answerSources.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <h5 style={{ margin: "0 0 6px" }}>참고한 출처</h5>
+                    <ul className="ai-sources-list">
+                      {answerSources.map((s, i) => {
+                        const t = s?.title || s?.name || s?.path || s?.url || `source-${i + 1}`;
+                        const meta = [];
+                        if (s?.type) meta.push(s.type);
+                        if (s?.page != null) meta.push(`p.${s.page}`);
+                        if (s?.score != null) meta.push(`${(Number(s.score) || 0).toFixed(2)}`);
+                        return (
+                          <li key={i}>
+                            {s?.url ? (
+                              <a href={s.url} target="_blank" rel="noreferrer">
+                                {t}
+                              </a>
+                            ) : (
+                              <span>{t}</span>
+                            )}
+                            {meta.length > 0 && (
+                              <small style={{ marginLeft: 6, opacity: 0.7 }}>
+                                ({meta.join(" · ")})
+                              </small>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -255,5 +387,3 @@ function SummaryPreviewPage() {
     </div>
   );
 }
-
-export default SummaryPreviewPage;

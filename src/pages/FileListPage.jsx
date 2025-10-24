@@ -38,7 +38,7 @@ function FileListPage() {
   //파일 클릭 시 summary-preview 페이지로 이동
   const handleFileClick = (file) => {
     navigate(`/summary-preview/${file.contentId}`, {
-      state: { title: file.title },
+      state: { title: file.title , contentId: file.contentId},
     });
   };
 
