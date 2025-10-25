@@ -1,88 +1,121 @@
 // src/pages/QuizPage.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import pyApi from "../api/pyApi";
+import api from "../api/axios";
 import Sidebar from "../components/Sidebar";
 import "../styles/global.css";
 import "../styles/QuizPage.css";
 
-const QUIZ_API = "/quiz/generate";
-
-// '하/중/상' → 'EASY/MEDIUM/HARD'
-const mapDifficulty = (d) => {
-  if (!d) return "MEDIUM";
-  if (d === "하") return "EASY";
-  if (d === "중") return "MEDIUM";
-  if (d === "상") return "HARD";
-  return String(d).toUpperCase();
-};
+const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
 export default function QuizPage() {
-  const { state } = useLocation();
+  const location = useLocation();
+  const { state } = location || {};
   const navigate = useNavigate();
 
-  // SummaryPreviewPage에서 넘어온 값
-  const titleFromState = state?.title ?? "퀴즈";
-  const numQuestions = Number(state?.count ?? 5);
-  const difficulty = mapDifficulty(state?.difficulty ?? "중");
-  const pdfPathsFromState = Array.isArray(state?.pdfPaths) ? state.pdfPaths : [];
+  // 복구 우선순위: location.state → URL ?n= → sessionStorage → 기본값
+  const search = new URLSearchParams(location.search);
+  const nFromQuery = Number(search.get("n"));
+  const stored = (() => {
+    try {
+      return JSON.parse(sessionStorage.getItem("lastQuizConfig") || "{}");
+    } catch {
+      return {};
+    }
+  })();
 
-  // 화면 상태
+  const contentId = state?.contentId ?? stored.contentId;
+  const titleFromState = state?.title ?? stored.title ?? "퀴즈";
+  const difficulty = state?.difficulty ?? stored.difficulty ?? "MEDIUM";
+  const numQuestions = (() => {
+    const raw = state?.count ?? (Number.isFinite(nFromQuery) ? nFromQuery : stored.count);
+    const n = Number(raw);
+    return Number.isFinite(n) && n > 0 ? n : 5;
+  })();
+
+  // 상태
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [quiz, setQuiz] = useState(null); // { title, questions:[{id,text,type,options:[{id,text}], correct_answer, explanation}] }
-  const [answers, setAnswers] = useState({}); // 단일: { [qid]: optId }, 복수: { [qid]: [optId, ...] }
+  const [quiz, setQuiz] = useState(null);           // {title, questions:[{id,text,options:[{id,text,letter}], explanation}]}
+  const [answers, setAnswers] = useState({});       // { [quiz_id]: optionId }
+  const [submitting, setSubmitting] = useState(false);
+  const [currentBatch, setCurrentBatch] = useState(null);
 
-  // -------- 데이터 로드 --------
   useEffect(() => {
-    let ignore = false;
+    if (!contentId) {
+      setError("콘텐츠 ID가 없어 퀴즈를 생성할 수 없습니다.");
+      setLoading(false);
+      return;
+    }
 
+    // 복구용 저장
+    try {
+      sessionStorage.setItem(
+        "lastQuizConfig",
+        JSON.stringify({ contentId, title: titleFromState, difficulty, count: numQuestions })
+      );
+    } catch {
+      // ignore
+    }
+
+    let ignore = false;
     (async () => {
       try {
         setLoading(true);
         setError("");
 
-        const body = {
-          pdf_paths:
-            pdfPathsFromState.length > 0
-              ? pdfPathsFromState
-              : ["uploaded_pdfs/ch03_대칭키 암호(1).pdf"], // 임시 고정 경로
-          num_questions: numQuestions,
-          difficulty, // "EASY" | "MEDIUM" | "HARD"
-        };
+        // 생성 요청
+        const body = { numQuestions, difficulty };
+        const { data } = await api.post(`/contents/${contentId}/quiz/generate`, body);
 
-        const { data } = await pyApi.post(QUIZ_API, body);
-        if (ignore) return;
+        // 응답 파싱
+        const rawList = Array.isArray(data?.quizzes) ? data.quizzes : [];
+        const list = rawList.slice(0, Math.max(1, Math.min(numQuestions, rawList.length)));
+        if (list.length === 0) throw new Error(data?.message || "퀴즈 생성 결과가 비어 있습니다.");
 
-        if (data?.status !== "success" || !Array.isArray(data?.questions)) {
-          throw new Error("퀴즈 생성 실패 또는 응답 형식 오류");
-        }
+        // 배치 번호 보관
+        const batchFromResp = data?.batch ?? list[0]?.quiz_batch ?? null;
+        setCurrentBatch(batchFromResp);
 
-        // FastAPI 응답 → 예전 UI 구조로 매핑
+        // 화면용 구조로 매핑 (보기는 배열로 강제)
         const mapped = {
           title: titleFromState,
-          questions: data.questions.map((q, qi) => ({
-            id: qi + 1,
-            text: q.question,
-            type: "single", // API가 단일정답 기준이라 single 고정
-            options: (q.options || []).map((opt, oi) => ({
-              id: `${qi + 1}_${oi + 1}`, // 보기 ID는 "문항_보기"
-              text: opt,
-            })),
-            correct_answer: q.correct_answer, // 문자열(보기 텍스트)
-            explanation: q.explanation || "",
-          })),
+          questions: list.map((q) => {
+            const opts = Array.isArray(q.options)
+              ? q.options
+              : typeof q.options === "string"
+              ? q.options.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+              : [];
+
+            return {
+              id: q.quiz_id,
+              text: q.question,
+              type: "single",
+              options: opts.map((opt, i) => ({
+                id: `${q.quiz_id}_${i + 1}`,
+                text: String(opt),
+                letter: LETTERS[i] || "",
+              })),
+              explanation: q.explanation || "",
+            };
+          }),
         };
 
-        setQuiz(mapped);
-        setAnswers({});
+        if (!ignore) {
+          setQuiz(mapped);
+          setAnswers({});
+        }
       } catch (e) {
-        const detail =
-          e?.response?.data?.detail ||
-          (typeof e?.response?.data === "string" ? e.response.data : null);
-        setError(detail || e.message || "퀴즈 생성 중 오류가 발생했습니다.");
+        if (!ignore) {
+          const detail =
+            e?.response?.data?.message ||
+            e?.response?.data?.error ||
+            e?.message ||
+            "퀴즈 생성 중 오류가 발생했습니다.";
+          setError(detail);
+        }
       } finally {
-        setLoading(false);
+        if (!ignore) setLoading(false);
       }
     })();
 
@@ -90,82 +123,83 @@ export default function QuizPage() {
       ignore = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numQuestions, difficulty, JSON.stringify(pdfPathsFromState)]);
+  }, [contentId, difficulty, numQuestions]);
 
-  // -------- 선택 핸들러 --------
-  const handleSingle = (qid, optId) => {
-    setAnswers((prev) => ({ ...prev, [qid]: optId }));
-  };
-  const handleMulti = (qid, optId, checked) => {
-    setAnswers((prev) => {
-      const cur = Array.isArray(prev[qid]) ? prev[qid] : [];
-      const next = checked ? [...new Set([...cur, optId])] : cur.filter((x) => x !== optId);
-      return { ...prev, [qid]: next };
-    });
-  };
+  // 선택 핸들러
+  const handleSingle = (qid, optId) => setAnswers((p) => ({ ...p, [qid]: optId }));
 
-  // -------- 검증 --------
+  // 제출 가능 여부
   const allAnswered = useMemo(() => {
     if (!quiz) return false;
-    return quiz.questions.every((q) =>
-      q.type === "multi"
-        ? Array.isArray(answers[q.id]) && answers[q.id].length > 0
-        : !!answers[q.id]
-    );
+    return quiz.questions.every((q) => !!answers[q.id]);
   }, [quiz, answers]);
 
-  // -------- 제출 → 결과 페이지로 네비게이트 --------
-  const handleSubmit = () => {
-    if (!quiz) return;
+  // 제출 → /grade 저장
+  const handleSubmit = async () => {
+    if (!quiz || !contentId) return;
+    setSubmitting(true);
+    try {
+      // {quiz_id, user_answer:"A|B|C|D"}로 변환
+      const payloadAnswers = quiz.questions.map((q) => {
+        const chosenId = answers[q.id];
+        const idx = q.options.findIndex((o) => o.id === chosenId);
+        const letter = idx >= 0 ? (q.options[idx].letter || LETTERS[idx] || "") : "";
+        return { quiz_id: q.id, user_answer: letter };
+      });
 
-    const detail = quiz.questions.map((q) => {
-      // 정답(텍스트) → 정답 옵션 id 매핑
-      const correctIds = (() => {
-        // 단일 정답 문자열 기준
-        const target = String(q.correct_answer ?? "").trim();
-        const found = q.options.find((o) => String(o.text).trim() === target);
-        return found ? [found.id] : []; // 못 찾으면 빈 배열
-      })();
+      const endpoint =
+        currentBatch != null
+          ? `/contents/${contentId}/quiz/grade?batch=${currentBatch}`
+          : `/contents/${contentId}/quiz/grade`;
 
-      // 사용자가 고른 옵션 id들
-      const userIds =
-        q.type === "multi"
-          ? Array.isArray(answers[q.id]) ? answers[q.id] : []
-          : answers[q.id]
-          ? [answers[q.id]]
-          : [];
+      const { data } = await api.post(endpoint, { answers: payloadAnswers });
 
-      // 정오판정 (단일 기준: 첫 요소 비교, 멀티 대비: 집합 동일)
-      const isCorrect =
-        q.type === "multi"
-          ? correctIds.length === userIds.length &&
-            correctIds.every((id) => userIds.includes(id))
-          : correctIds.length === 1 && userIds.length === 1 && correctIds[0] === userIds[0];
+      // ✅ 결과 페이지가 항상 보기를 렌더링할 수 있도록, 채점 응답을 보강(enrich)
+      // 응답에 results가 있다면 quiz.questions와 매칭하여 options/문항 텍스트를 주입
+      const enrichResults =
+        Array.isArray(data?.results) ? data.results.map((r) => {
+          const q = quiz.questions.find((x) => x.id === (r.quiz_id ?? r.id));
+          const options = q ? q.options.map((o) => o.text) : undefined;
+          return {
+            ...r,
+            // 서버가 안 준 경우를 대비해 보기/문항 텍스트 보강
+            options: r.options ?? r.choices ?? options,
+            question: r.question ?? q?.text ?? r.question,
+          };
+        }) : [];
 
-      return {
-        questionId: q.id,
-        question: q.text,
-        options: q.options,                 // [{id, text}]
-        correctOptionIds: correctIds,       // ["1_2"]
-        userOptionIds: userIds,             // ["1_3"] or []
-        isCorrect,
+      const enrichedServerResult = {
+        ...data,
+        // 빈 배열이어도 항상 results 키 유지
+        results: enrichResults,
+        // attempt_id/batch를 최대한 포함
+        attempt_id: data?.attempt_id ?? null,
+        batch: data?.batch ?? currentBatch ?? null,
+        content_id: data?.content_id ?? contentId,
       };
-    });
 
-    const score = detail.filter((d) => d.isCorrect).length;
-    const total = quiz.questions.length;
-
-    navigate("/result", {
-      state: {
-        title: `${quiz.title} 결과`,
-        score,
-        total,
-        detail,
-      },
-    });
+      navigate("/result", {
+        state: {
+          contentId,
+          attemptId: enrichedServerResult.attempt_id ?? null, // ✅ 폴백 조회용
+          title: `${quiz.title} 결과`,
+          serverResult: enrichedServerResult,                 // ✅ 보강된 결과
+          batch: enrichedServerResult.batch ?? null,
+        },
+      });
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        "채점/저장 중 오류가 발생했습니다.";
+      alert(msg);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  // -------- 렌더링 --------
+  // ===== 렌더링 =====
   if (loading) {
     return (
       <div className="qp-layout">
@@ -185,10 +219,14 @@ export default function QuizPage() {
         <Sidebar />
         <main className="qp-content">
           <div className="qp-container">
-            <p style={{ color: "tomato" }}>⚠ {error}</p>
-            <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
-              ← 돌아가기
-            </button>
+            <div className="qp-card" style={{ borderColor: "tomato" }}>
+              <p style={{ color: "tomato", margin: 0 }}>⚠ {error}</p>
+            </div>
+            <div className="qp-card qp-actions">
+              <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
+                ← 돌아가기
+              </button>
+            </div>
           </div>
         </main>
       </div>
@@ -200,62 +238,58 @@ export default function QuizPage() {
       <Sidebar />
       <main className="qp-content">
         <div className="qp-container">
+          {/* 상단 요약 바 */}
+          <div className="qp-card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <h2 className="qp-title" style={{ margin: 0 }}>{quiz?.title}</h2>
+            <div style={{ flex: 1 }} />
+            <div className="qp-pill">문항: <b>{numQuestions}</b></div>
+            <div className="qp-pill">난이도: <b>{difficulty}</b></div>
+          </div>
 
-          {!quiz ? (
-            <p>퀴즈 불러오는 중...</p>
-          ) : (
-            <>
-              <h2 className="qp-title">{quiz.title}</h2>
+          {/* 문항 리스트 (카드형) */}
+          <div className="qp-list">
+            {quiz?.questions.map((q, idx) => (
+              <article key={q.id} className="qp-card qp-item">
+                <header className="qp-item-head">
+                  <span className="qp-index">Q{idx + 1}</span>
+                  <span className="qp-question">{q.text}</span>
+                </header>
 
-              <div className="qp-list">
-                {quiz.questions.map((q, idx) => (
-                  <div key={q.id} className="qp-card qp-item">
-                    <div className="qp-item-head">
-                      <span className="qp-index">Q{idx + 1}</span>
-                      <span className="qp-question">{q.text}</span>
-                      {q.type === "multi" && <span className="qp-hint">(복수 선택)</span>}
-                    </div>
+                <div className="qp-options">
+                  {q.options.map((opt) => (
+                    <label
+                      key={opt.id}
+                      className={`qp-option ${answers[q.id] === opt.id ? "is-selected" : ""}`}
+                    >
+                      {/* 시멘틱 라디오 + 라벨 클릭 UX */}
+                      <input
+                        type="radio"
+                        name={`q-${q.id}`}
+                        checked={answers[q.id] === opt.id}
+                        onChange={() => handleSingle(q.id, opt.id)}
+                      />
+                      <span className="qp-option-badge">{opt.letter}</span>
+                      <span className="qp-option-label">{opt.text}</span>
+                    </label>
+                  ))}
+                </div>
+              </article>
+            ))}
+          </div>
 
-                    <div className="qp-options">
-                      {q.options.map((opt) => (
-                        <label key={opt.id} className="qp-option">
-                          <input
-                            type={q.type === "multi" ? "checkbox" : "radio"}
-                            name={`q-${q.id}`}
-                            checked={
-                              q.type === "multi"
-                                ? (answers[q.id] || []).includes(opt.id)
-                                : answers[q.id] === opt.id
-                            }
-                            onChange={(e) =>
-                              q.type === "multi"
-                                ? handleMulti(q.id, opt.id, e.target.checked)
-                                : handleSingle(q.id, opt.id)
-                            }
-                          />
-                          <span className="qp-option-label">{opt.text}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* 버튼 영역 */}
-              <section className="qp-card qp-actions">
-                <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
-                  ← 돌아가기
-                </button>
-                <button
-                  className="qp-btn qp-btn-primary"
-                  disabled={!allAnswered}
-                  onClick={handleSubmit}
-                >
-                  제출하기
-                </button>
-              </section>
-            </>
-          )}
+          {/* 하단 액션 */}
+          <section className="qp-card qp-actions">
+            <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
+              ← 돌아가기
+            </button>
+            <button
+              className="qp-btn qp-btn-primary"
+              disabled={!allAnswered || submitting}
+              onClick={handleSubmit}
+            >
+              {submitting ? "저장 중..." : "제출하기"}
+            </button>
+          </section>
         </div>
       </main>
     </div>

@@ -126,7 +126,6 @@ export default function SummaryPreviewPage() {
         const paths = extractPdfPathsFromSummaryResponse(data);
         if (!ignore && paths.length > 0) setDetectedPdfPaths(paths);
 
-        if (!ignore) setInfo("전체 요약을 불러왔습니다.");
       } catch (e) {
         if (!ignore) {
           const s = e?.response?.status;
@@ -225,13 +224,32 @@ export default function SummaryPreviewPage() {
     }
   };
 
-  // 📝 퀴즈 시작
+  // ✅ 퀴즈 시작: 서버에서 생성 후 /quiz로 이동
   const startQuiz = () => {
-    try { localStorage.setItem("latestContentId", String(contentId)); } catch { alert("퀴즈생성오류"); }
-    navigate("/quiz", {
-      state: { difficulty, count, contentId, title, pdfPaths: resolvedPdfPaths },
-    });
+    try {
+      // 복구용 저장
+      try {
+        localStorage.setItem("latestContentId", String(contentId));
+        sessionStorage.setItem(
+          "lastQuizConfig",
+          JSON.stringify({ contentId, title, difficulty, count })
+        );
+      } catch {alert("퀴즈생성에러")}
+
+      // state + 쿼리로 이동 (새로고침 대비)
+      navigate(`/quiz?n=${count}`, {
+        state: { difficulty, count, contentId, title, pdfPaths: resolvedPdfPaths },
+      });
+    } catch (e) {
+      const msg =
+        e?.response?.data?.message ||
+        e?.response?.data?.error ||
+        e?.message ||
+        "퀴즈 이동 중 오류가 발생했습니다.";
+      alert(msg);
+    }
   };
+
 
   if (loading) return <p>불러오는 중...</p>;
 
@@ -248,11 +266,6 @@ export default function SummaryPreviewPage() {
         <div className="ai-selected-info" style={{ marginTop: 8 }}>
           {(resolvedPdfPaths.length > 0 || DEV_FALLBACK_PDF_MAP[contentId]) && (
             <div className="ai-selected-info" style={{ marginTop: 8 }}>
-              {resolvedPdfPaths.length > 0 ? (
-                <small>질문/퀴즈에 사용할 PDF: {resolvedPdfPaths.join(", ")}</small>
-              ) : (
-                <small>원본 없음 → 임시 경로 사용: {DEV_FALLBACK_PDF_MAP[contentId]}</small>
-              )}
             </div>
           )}
 
@@ -292,7 +305,7 @@ export default function SummaryPreviewPage() {
 
             <fieldset className="sp-fieldset">
               <legend>문제 개수</legend>
-              {[3, 5, 8, 10].map((n) => (
+              {[2, 4, 8, 10].map((n) => (
                 <label key={n} className="sp-radio">
                   <input
                     type="radio"
@@ -333,11 +346,6 @@ export default function SummaryPreviewPage() {
 
             {(answerMode || answerSources.length > 0 || answerScore != null) && (
               <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {answerMode && (
-                  <span className={`badge ${answerMode === "pdf" ? "badge-pdf" : "badge-web"}`}>
-                    {answerMode === "pdf" ? "PDF 기반" : "웹 검색 기반"}
-                  </span>
-                )}
                 {answerScore != null && (
                   <span className="badge badge-neutral">score: {answerScore.toFixed(2)}</span>
                 )}

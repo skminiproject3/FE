@@ -1,191 +1,244 @@
-/* ====== QuizResultPage.css ====== */
+/* ====== QuizResultPage.css (Sidebar 고정 버전) ====== */
 
-/* 기본 레이아웃 (Sidebar + Content) */
-.board-layout {
+ul {
+  list-style: none;       /* ✅ li의 점(●) 제거 */
+  margin: 0;              /* 필요 시 */
+  padding: 0;             /* 기본 왼쪽 들여쓰기 제거 */
+}
+
+/* 레이아웃: Sidebar(280px) + Content(유연) */
+.qp-layout {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px minmax(0, 1fr);
+  /* ✅ 두 번째 칼럼만 유연 */
   min-height: 100vh;
   background: #f6f7fb;
 }
 
-.content {
-  padding: 24px;
+.qp-content {
+    padding: 24px;
+    min-width: 0;
+    max-width: 700px;
+    margin: 0 auto;
 }
 
-.quiz-result-page .quiz-result-container {
-  max-width: 920px;
+.qp-container {
+  max-width: 980px;
   margin: 0 auto;
 }
 
-.quiz-result-page h1 {
+.qp-title {
   font-size: 24px;
   font-weight: 800;
-  margin: 0 0 16px 0;
+  margin: 0 0 16px;
 }
 
-/* 카드 공통 */
-.result-card {
-  background: #fff;
-  border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 14px;
-  padding: 16px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+/* 결과 요약 */
+.qp-container>p {
+  opacity: .9;
+  margin: 6px 0 12px;
+  font-size: 16px;
+  text-align: center;
 }
 
-/* ----- 요약 카드 (점수/정답률) ----- */
-.summary-card {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  gap: 16px;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-/* 원형 게이지 */
-.result-gauge {
-  --p: 0%;
-  width: 140px;
-  height: 140px;
-  border-radius: 50%;
-  display: grid;
-  place-items: center;
-  background:
-    radial-gradient(closest-side, #fff 78%, transparent 80% 100%),
-    conic-gradient(#111827 var(--p), #e5e7eb 0);
-}
-
-.gauge-inner {
-  display: grid;
-  place-items: center;
-  width: 110px;
-  height: 110px;
-  border-radius: 50%;
-  background: #fff;
-  box-shadow: inset 0 0 0 1px rgba(0,0,0,0.06);
-}
-
-.gauge-inner strong {
-  font-size: 28px;
-  line-height: 1;
-}
-.gauge-inner span {
-  font-size: 12px;
-  opacity: 0.7;
-}
-
-/* 요약 수치 */
-.summary-stats {
-  display: grid;
-  gap: 8px;
-}
-.stat-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-}
-.stat-row span {
-  opacity: 0.75;
-}
-
-/* ----- 상세 결과 ----- */
-.detail-title {
-  margin: 14px 0 10px;
-  font-size: 18px;
-  font-weight: 800;
-}
-
+/* 결과 리스트(불릿 제거) */
 .result-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* 문항 카드 */
-.qa-item {
+  list-style: none;
+  margin: 0;
+  padding: 0;
   display: grid;
-  gap: 10px;
-  border-left: 6px solid transparent;
+  gap: 16px;
 }
-.qa-item.ok { border-left-color: #4ade80; }   /* 초록 */
-.qa-item.bad { border-left-color: #f87171; }  /* 빨강 */
-
-.qa-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.badge {
-  display: inline-grid;
-  place-items: center;
-  width: 24px;
-  height: 24px;
-  border-radius: 999px;
-  font-weight: 800;
-  color: #fff;
-}
-.badge.ok { background: #16a34a; }
-.badge.bad { background: #dc2626; }
-
-.qa-body {
-  display: grid;
-  gap: 6px;
-}
-.question {
-  font-weight: 700;
-}
-.correct-answer,
-.selected-answer {
-  font-size: 14px;
-  line-height: 1.5;
-}
-.qr-wrong-msg {
-  color: #dc2626;
-  font-size: 14px;
-  margin-top: 2px;
-}
-
-/* 하단 액션 */
-.qr-actions {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-.qr-btn {
-  padding: 10px 14px;
-  border-radius: 10px;
-  border: none;
-  font-weight: 700;
-  cursor: pointer;
-}
-.qr-btn-primary {
-  background: #111827;
-  color: #fff;
-}
-.qr-btn-primary:hover {
-  filter: brightness(0.95);
-}
-
 
 /* 보기 리스트 */
 .options-list {
   list-style: none;
-  padding-left: 0;
-  margin: 8px 0;
+  padding: 0;
+  margin: 8px 0 0 0;
+  display: grid;
+  gap: 8px;
 }
-.option {
-  padding: 6px 10px;
-  margin-bottom: 4px;
+
+.options-list .option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1.5px solid #eef2f7;
+}
+
+.option-label {
+  min-width: 36px;
+  height: 28px;
+  display: grid;
+  place-items: center;
   border-radius: 8px;
-  background: #f4f4f4;
+  font-weight: 800;
+  background: #111827;
+  color: #fff;
+}
+
+/* 보기 텍스트 줄바꿈/수축 */
+.options-list .option>span {
+  flex: 1;
+  min-width: 0;
+  /* ✅ 사이드바 고정일 때 가로 공간 부족해도 줄어듦 */
+  overflow-wrap: anywhere;
+  word-break: keep-all;
+}
+
+/* 정오 강조 (연녹/분홍) */
+.qa-item {
+  border-radius: 14px;
+  border: 1px solid #e5f5eb;
+  background: #f6fff9;
+  padding: 14px 16px;
+}
+
+.qa-item.ok {
+  border-color: #d1fae5;
+  background: #f1fdf7;
+}
+
+.qa-item.bad {
+  border-color: #fee2e2;
+  background: #fff7f7;
+}
+
+.options-list .option.correct {
+  background: #c7f9d5;
+  border-color: #86efac;
+}
+
+.options-list .option.user:not(.correct) {
+  background: #ffe3e6;
+  border-color: #fda4af;
+}
+
+.options-list .option.user.correct {
+  background: #b6f3c7;
+  border-color: #34d399;
+}
+
+.option-badges {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.option-badges .tag-correct {
+  color: #15803d;
+}
+
+.option-badges .tag-user {
+  color: #b91c1c;
+}
+
+.qa-state {
+  margin-top: 8px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.qa-state .ok {
+  color: #15803d;
+}
+
+.qa-state .bad {
+  color: #b91c1c;
+}
+
+.qa-answers {
+  margin-top: 6px;
   font-size: 14px;
+  line-height: 1.65;
 }
-.option.correct {
-  background: #dcfce7;  /* 정답: 연두 */
-  border: 1px solid #16a34a;
+
+.qa-answers .mine.ok {
+  color: #15803d;
+  font-weight: 800;
 }
-.option.user {
-  background: #fee2e2;  /* 내가 선택한 오답 */
-  border: 1px solid #dc2626;
+
+.qa-answers .mine.bad {
+  color: #b91c1c;
+  font-weight: 800;
+}
+
+.qa-answers .correct {
+  color: #15803d;
+  font-weight: 800;
+}
+
+.qa-explain {
+  margin-top: 8px;
+  color: #1f2937;
+  opacity: .9;
+}
+
+/* ====== 반응형 (Sidebar 건드리지 않음) ====== */
+@media (max-width: 1024px) {
+
+  /* ❌ grid-template-columns 변경하지 않음 (Sidebar 유지) */
+  .qp-content {
+    padding: 16px;
+  }
+
+  .qp-container {
+    max-width: 100%;
+  }
+
+  .options-list {
+    gap: 6px;
+  }
+
+  .options-list .option {
+    padding: 10px 12px;
+  }
+
+  .option-label {
+    min-width: 32px;
+    height: 26px;
+    font-size: 14px;
+  }
+
+  .qa-answers {
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 480px) {
+  .qp-content {
+    padding: 12px;
+  }
+
+  .options-list .option {
+    flex-wrap: wrap;
+  }
+
+  .options-list .option>span {
+    width: 100%;
+  }
+
+  .option-badges {
+    order: 3;
+    width: 100%;
+    justify-content: flex-start;
+    margin-top: 4px;
+  }
+
+  .option-label {
+    min-width: 28px;
+    height: 22px;
+    font-size: 13px;
+  }
+
+  .qa-state {
+    font-size: 13px;
+  }
 }
