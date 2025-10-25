@@ -1,13 +1,13 @@
-// src/pages/RegisterPage.jsx
+// 📁 src/pages/RegisterPage.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../api/axios"; // ✅ 공통 axios 인스턴스 사용
 import "../styles/RegisterPage.css";
 
 export default function RegisterPage() {
   // 백엔드 명세: username, email, password
   const [username, setUsername] = useState("");
-  const [email, setEmail]     = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -23,20 +23,22 @@ export default function RegisterPage() {
     setSubmitting(true);
 
     try {
-      const { data } = await axios.post(
-        "http://localhost:8080/api/auth/signup", // ✅ 경로 확인!
-        { email, password, username },
-        { headers: { "Content-Type": "application/json" } }
-      );
+      console.log("[REGISTER] try signup →", { username, email });
 
-      // 성공 예시 응답: { userId, email, username }
-      console.log("가입 성공:", data);
+      // ✅ 환경변수 기반 axios 인스턴스 사용 (/api 자동 prefix)
+      const { data } = await api.post("/auth/signup", {
+        email,
+        password,
+        username,
+      });
+
+      console.log("[REGISTER] success:", data);
       alert("✅ 회원가입 성공! 로그인 페이지로 이동합니다.");
       navigate("/login", { replace: true });
     } catch (err) {
-      console.error(err);
+      console.error("[REGISTER] failed:", err);
 
-      // 서버에서 표준 오류 응답을 내려주는 경우 처리 (예: {errorCode, message, field})
+      // 서버에서 표준 오류 응답을 내려주는 경우 처리
       const msg =
         err.response?.data?.message ||
         err.response?.data?.error ||
@@ -50,8 +52,11 @@ export default function RegisterPage() {
   return (
     <div className="register-container">
       <div className="register-box">
+        {/* 상단 로고 */}
         <div className="logo-section">
-          <span className="logo-icon" role="img" aria-label="notebook">📒</span>
+          <span className="logo-icon" role="img" aria-label="notebook">
+            📒
+          </span>
           <div className="logo-text">
             <div>AI 학습 노트</div>
             <div>도우미</div>

@@ -1,13 +1,15 @@
-// src/pages/LoginPage.jsx
+// 📁 src/pages/LoginPage.jsx
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
+import api from "../api/axios"; // ✅ 공통 axios 인스턴스 사용
 import "../styles/LoginPage.css";
 
 /** JWT의 exp(만료시각, seconds) → ms 타임스탬프로 변환 */
 function getExpMsFromJwt(token) {
   try {
-    const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+    const payload = JSON.parse(
+      atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))
+    );
     if (payload?.exp) return payload.exp * 1000; // seconds → ms
   } catch (e) {
     alert("JWT 만료문제", e);
@@ -31,13 +33,13 @@ export default function LoginPage() {
 
     try {
       console.log("[LOGIN] try login →", { email });
-      const res = await axios.post(
-        "http://localhost:8080/api/auth/login",
-        { email, password },
-        { headers: { "Content-Type": "application/json" } }
-      );
 
-      // 서버가 어디에 토큰을 담아 주는지 대비 (본문/헤더 모두 케어)
+      // ✅ 환경변수 기반 axios 인스턴스 사용 (/api 자동 prefix)
+      const res = await api.post("/auth/login", {
+        email,
+        password,
+      });
+
       const data = res?.data || {};
       let accessToken =
         data.accessToken ||
@@ -49,12 +51,12 @@ export default function LoginPage() {
         throw new Error("서버 응답에 accessToken이 없습니다.");
       }
 
-      // 만료시각 계산: 1) 서버가 expiresIn(ms|s) 주면 사용, 2) 아니면 JWT exp에서 계산
+      // 만료시각 계산
       let expiresAtMs = null;
       if (typeof data.expiresIn === "number") {
-        // 백엔드가 ms 단위면 그대로, s 단위면 조금 길게 저장되는 것뿐이라 큰 문제 없음
         const now = Date.now();
-        expiresAtMs = now + (data.expiresIn > 1e12 ? data.expiresIn : data.expiresIn * 1000);
+        expiresAtMs =
+          now + (data.expiresIn > 1e12 ? data.expiresIn : data.expiresIn * 1000);
       } else {
         expiresAtMs = getExpMsFromJwt(accessToken);
       }
@@ -69,7 +71,6 @@ export default function LoginPage() {
     } catch (err) {
       console.error("[LOGIN] failed:", err);
 
-      // 서버 에러 메시지 친화적으로 표시
       const apiMsg =
         err?.response?.data?.message ||
         err?.response?.data?.error ||
@@ -77,7 +78,6 @@ export default function LoginPage() {
         "로그인에 실패했습니다. 이메일 또는 비밀번호를 확인하세요.";
       setErrorMsg(apiMsg);
 
-      // 네트워크/프리플라이트 이슈 빠르게 파악용 로그
       if (err?.response) {
         console.log("[LOGIN][debug] status:", err.response.status);
         console.log("[LOGIN][debug] headers:", err.response.headers);

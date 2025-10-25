@@ -3,7 +3,7 @@ import axios from "axios";
 import { getAccessToken, getRefreshToken, saveTokens, clearTokens } from "../utils/auth";
 
 // ✅ 환경변수 사용 (없으면 기본값 사용)
-const BASE_URL = import.meta.env.VITE_APIURL || "http://localhost:8080/api";
+const BASE_URL = import.meta.env.VITE_APIURL || "/api";
 
 const api = axios.create({
   baseURL: BASE_URL,
