@@ -95,20 +95,15 @@ const answersEqual = (userRaw, correctRaw, options) => {
   return normForMatch(userRaw) === normForMatch(correctRaw);
 };
 
-// 화면 표시용
-// const displayFromIndex = (idx, options) => {
-//   const opts = Array.isArray(options) ? options : EMPTY_ARR;
-//   if (idx < 0 || idx >= opts.length) return { label: "-", text: "-" };
-//   return { label: labelOf(idx), text: String(opts[idx]) };
-// };
-const displayFromUser = (userRaw, options) => {
+// 화면 표시용(사용자/정답 공통)
+const displayFromAny = (raw, options) => {
   const opts = Array.isArray(options) ? options : EMPTY_ARR;
-  const idx = resolveIndexFromAny(userRaw, opts);
+  const idx = resolveIndexFromAny(raw, opts);
   if (idx >= 0 && idx < opts.length) {
     return { label: labelOf(idx), text: String(opts[idx]) };
   }
-  const raw = String(userRaw ?? "").trim();
-  return raw ? { label: "-", text: raw } : { label: "-", text: "-" };
+  const s = String(raw ?? "").trim();
+  return s ? { label: "-", text: s } : { label: "-", text: "-" };
 };
 
 // 안전 GET
@@ -132,15 +127,16 @@ export default function QuizResultPage() {
 
   // ---- 입력(라우팅 state/서버 스냅샷) ----
   const title = state?.title ?? "퀴즈 결과";
-  const serverSnap = state?.serverResult || EMPTY_OBJ;
+  const serverSnap = state?.serverResult || EMPTY_OBJ; // 컨트롤러 /grade 응답 그대로
   const batch = state?.batch ?? serverSnap?.batch ?? null;
   const contentId = state?.contentId ?? serverSnap?.content_id ?? null;
   const attemptIdFromState = state?.attemptId ?? serverSnap?.attempt_id ?? null;
 
   // ---- serverRoot 안정화 ----
   const serverRoot = useMemo(() => {
+    // /grade 응답은 최상위에 값이 들어있음
     if (serverSnap?.results || serverSnap?.detail || serverSnap?.items) return serverSnap;
-    if (serverSnap?.data) return serverSnap.data;
+    if (serverSnap?.data) return serverSnap.data; // 혹시 data 래핑인 경우
     return EMPTY_OBJ;
   }, [serverSnap]);
 
@@ -162,94 +158,54 @@ export default function QuizResultPage() {
     return nestedCandidates[0] || EMPTY_ARR;
   }, [serverRoot]);
 
-  // ---- 시도 요약 & 아이템 폴백 ----
-  const [attemptSummary, setAttemptSummary] = useState(null); // {attempt_id, score, correct_answers, total_questions, created_at, quiz_batch}
-  const [fetchedItems, setFetchedItems] = useState(null); // 시도 아이템(서버에서 가져온 결과)
+  // ---- 시도 요약 폴백(총점/정답수/총문항 용) ----
+  const [attemptSummary, setAttemptSummary] = useState(null); // {attempt_id, score, correct_answers, total_questions,...}
 
-  // attempt/items를 백엔드에서 확보
   useEffect(() => {
-    // ✅ 서버가 이미 results를 줬으면 fetch 시도하지 않음 (500 로그 방지)
-    if (resultsRawFromServer.length > 0) return;
-    if (!contentId && !attemptIdFromState) return;
+    // 서버가 이미 results를 줬으면 요약도 서버값을 우선 사용하므로 필수는 아님.
+    // 그래도 서버 요약이 없다면(프론트 진입만 한 경우) 최신 시도 요약을 폴백으로 확보.
+    if (resultsRawFromServer.length > 0) return; // 이미 결과가 있으면 패스
+    if (!contentId) return;
 
     let aborted = false;
-
     (async () => {
-      // 1) attemptId 결정
-      let attemptId = attemptIdFromState ?? serverRoot?.attempt_id ?? null;
+      const token = localStorage.getItem("accessToken");
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
 
-      // 2) attemptId 없으면 목록에서 최신 시도 찾기
-      if (!attemptId && contentId) {
-        const token = localStorage.getItem("accessToken");
-        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-        const attemptsRes = await safeGet(
-          `/contents/${contentId}/quiz/attempts${batch != null ? `?batch=${batch}` : ""}`,
-          headers
+      const attemptsRes = await safeGet(
+        `/contents/${contentId}/quiz/attempts${batch != null ? `?batch=${batch}` : ""}`,
+        headers
+      );
+      const attempts = Array.isArray(attemptsRes?.attempts) ? attemptsRes.attempts : EMPTY_ARR;
+      if (attempts.length > 0) {
+        attempts.sort(
+          (a, b) =>
+            (Date.parse(b?.created_at || 0) - Date.parse(a?.created_at || 0)) ||
+            ((Number(b?.attempt_id) || 0) - (Number(a?.attempt_id) || 0))
         );
-        const attempts = Array.isArray(attemptsRes?.attempts) ? attemptsRes.attempts : EMPTY_ARR;
-        if (attempts.length > 0) {
-          attempts.sort(
-            (a, b) =>
-              (Date.parse(b?.created_at || 0) - Date.parse(a?.created_at || 0)) ||
-              ((Number(b?.attempt_id) || 0) - (Number(a?.attempt_id) || 0))
-          );
-          const latest = attempts[0];
-          attemptId = latest?.attempt_id ?? null;
-          if (!aborted) setAttemptSummary(latest);
-        }
-      }
-
-      // 3) attemptId 있으면 items 조회
-      if (attemptId && contentId) {
-        const token = localStorage.getItem("accessToken");
-        const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
-
-        const toItemsArray = (data) => {
-          if (!data) return EMPTY_ARR;
-          if (Array.isArray(data?.items)) return data.items;
-          if (Array.isArray(data)) return data;
-          if (Array.isArray(data?.data)) return data.data;
-          if (Array.isArray(data?.result?.items)) return data.result.items;
-          if (Array.isArray(data?.result?.questions)) return data.result.questions;
-          if (Array.isArray(data?.items?.data)) return data.items.data;
-          return EMPTY_ARR;
-        };
-
-        let items = toItemsArray(
-          await safeGet(`/contents/${contentId}/quiz/attempts/${attemptId}/items`, headers)
-        );
-        if (items.length === 0) {
-          items = toItemsArray(await safeGet(`/quiz/attempts/${attemptId}/items`, headers));
-        }
-        if (items.length === 0) {
-          items = toItemsArray(await safeGet(`/quiz/attempts/latest/items`, headers));
-        }
-        if (!aborted && items.length > 0) setFetchedItems(items);
+        if (!aborted) setAttemptSummary(attempts[0]);
       }
     })();
-
     return () => {
       aborted = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentId, batch, attemptIdFromState, serverRoot?.attempt_id, resultsRawFromServer.length]);
+  }, [contentId, batch, resultsRawFromServer.length]);
 
   // ---- 렌더링용 표준 아이템 만들기 ----
   const mergedItems = useMemo(() => {
-    // 1) 서버가 results를 줬으면 1순위
-    const base = resultsRawFromServer.length > 0 ? resultsRawFromServer : fetchedItems || EMPTY_ARR;
+    // 1) 서버가 results를 줬으면 1순위 (재조회 없음)
+    const base = resultsRawFromServer;
 
     return base.map((r, i) => {
       const options = parseOptions(
         r.options ??
-        r.choices ??
-        r.options_text ??
-        r.choices_text ??
-        r.option_texts ??
-        r.choice_texts ??
-        r.answers ??
-        r.options_obj
+          r.choices ??
+          r.options_text ??
+          r.choices_text ??
+          r.option_texts ??
+          r.choice_texts ??
+          r.answers ??
+          r.options_obj
       );
 
       const userRaw =
@@ -259,14 +215,10 @@ export default function QuizResultPage() {
       // 파생 판정
       const derivedOk = answersEqual(userRaw, correctRaw, options);
 
-      // 서버 is_correct/score 있으면 존중하되,
-      // ❗ 서버가 false라도 파생이 true면 '정답'으로 **수정** (사용자 화면 기준 일관성)
+      // 서버 is_correct 있으면 우선, 없으면 파생 사용
       const okFromServer =
         typeof r.is_correct === "boolean" ? r.is_correct : (r.correct === true ? true : null);
       const ok = okFromServer === true ? true : derivedOk;
-
-      const scoreFromServer = typeof r.score === "number" ? r.score : null;
-      const score = scoreFromServer != null ? scoreFromServer : ok ? 1 : 0;
 
       return {
         id: r.quiz_id ?? r.id ?? i + 1,
@@ -275,22 +227,21 @@ export default function QuizResultPage() {
         userRaw,
         correctRaw,
         isCorrect: ok,
-        score,
         explanation: r.explanation ?? r.solution ?? "",
       };
     });
-  }, [resultsRawFromServer, fetchedItems]);
+  }, [resultsRawFromServer]);
 
-  // ---- 요약(총점/정답수/총문항) 계산: 서버값 우선, 없으면 파생 ----
+  // ---- 요약(총점/정답수/총문항) 계산: 서버값 우선, 없으면 파생/폴백 ----
   const { total, correctCount, totalScore } = useMemo(() => {
-    const totalQuestionsFromServer =
+    const totalQFromServer =
       serverRoot?.total_questions ??
       serverRoot?.total ??
       attemptSummary?.total_questions ??
       null;
 
-    const totalQuestions =
-      totalQuestionsFromServer ?? (Array.isArray(mergedItems) ? mergedItems.length : 0);
+    const totalQ =
+      totalQFromServer ?? (Array.isArray(mergedItems) ? mergedItems.length : 0);
 
     const correctFromServer =
       serverRoot?.correct_count ??
@@ -303,7 +254,7 @@ export default function QuizResultPage() {
         ? mergedItems.reduce((acc, it) => acc + (it.isCorrect ? 1 : 0), 0)
         : null;
 
-    const correct = derivedCorrect != null ? derivedCorrect : correctFromServer ?? 0;
+    const correct = correctFromServer ?? (derivedCorrect != null ? derivedCorrect : 0);
 
     // 총점: 서버 퍼센트 점수 있으면 우선 사용
     let score =
@@ -312,12 +263,12 @@ export default function QuizResultPage() {
       (typeof attemptSummary?.score === "number" && attemptSummary.score) ||
       null;
 
-    if (score == null && totalQuestions > 0) {
-      score = Math.round((correct / totalQuestions) * 100);
+    if (score == null && totalQ > 0) {
+      score = Math.round((correct / totalQ) * 100);
     }
     if (score == null) score = 0;
 
-    return { total: totalQuestions, correctCount: correct, totalScore: score };
+    return { total: totalQ, correctCount: correct, totalScore: score };
   }, [serverRoot, attemptSummary, mergedItems]);
 
   /* -------------------- UI -------------------- */
@@ -339,8 +290,8 @@ export default function QuizResultPage() {
             ) : (
               <ul>
                 {mergedItems.map((it, i) => {
-                  const ua = displayFromUser(it.userRaw, it.options);
-                  const ca = displayFromUser(it.correctRaw, it.options); // correct도 같은 규칙으로 라벨/텍스트 표시
+                  const ua = displayFromAny(it.userRaw, it.options);
+                  const ca = displayFromAny(it.correctRaw, it.options);
 
                   return (
                     <li
@@ -355,8 +306,10 @@ export default function QuizResultPage() {
                       {it.options.length > 0 && (
                         <ul className="options-list" style={{ marginTop: 6 }}>
                           {it.options.map((opt, j) => {
-                            const isUser = normForMatch(opt) === normForMatch(it.userRaw);
-                            const isCorrect = normForMatch(opt) === normForMatch(it.correctRaw);
+                            const isUser =
+                              normForMatch(opt) === normForMatch(it.userRaw);
+                            const isCorrect =
+                              normForMatch(opt) === normForMatch(it.correctRaw);
                             const cls = ["option", isCorrect ? "correct" : "", isUser ? "user" : ""]
                               .filter(Boolean)
                               .join(" ");
@@ -381,8 +334,7 @@ export default function QuizResultPage() {
                           <span className="ok">정답 ✅</span>
                         ) : (
                           <span className="bad">오답 ❌</span>
-                        )}{" "}
-
+                        )}
                       </div>
 
                       <div className="qa-answers" style={{ marginTop: 4 }}>
@@ -411,7 +363,9 @@ export default function QuizResultPage() {
           </div>
 
           <section className="qp-card qp-actions" style={{ marginTop: 16 }}>
-            <button className="qp-btn qp-btn-primary" onClick={() => navigate("/board")}>
+            <button className="qp-btn qp-btn-primary" onClick={() => navigate("/board", {
+              state: { attemptId: attemptIdFromState ?? serverRoot?.attempt_id ?? null, contentId, batch }
+            })}>
               대시보드로
             </button>
           </section>

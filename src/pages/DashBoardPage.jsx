@@ -1,6 +1,6 @@
 // src/pages/DashBoardPage.jsx
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import "../styles/global.css";
 import "../styles/DashBoardPage.css";
 import Sidebar from "../components/Sidebar";
@@ -30,9 +30,37 @@ function normalizePercent(n) {
 export default function DashBoardPage() {
   const [fileCount, setFileCount] = useState(0);        // 전체 업로드 파일 수
   const [progressList, setProgressList] = useState([]); // 콘텐츠별 최신 정답률(or 진행률)
-  const [, setQuizCount] = useState(0);        // 정답률 > 0 콘텐츠 수
+  const [, setQuizCount] = useState(0);                 // 정답률 > 0 콘텐츠 수
   const [index, setIndex] = useState(0);
+
   const navigate = useNavigate();
+  const { state } = useLocation() || {};
+  // ✅ ResultPage에서 넘어온 "고정할 시도"
+  const pinnedAttemptId = state?.attemptId ?? null;
+  const pinnedContentId = state?.contentId ?? null;
+
+  /** 특정 attempt 요약을 서버에서 받아오기 */
+  const fetchAttemptSummary = useCallback(async (contentId, attemptId, token) => {
+    if (!contentId || !attemptId) return null;
+    try {
+      const headers = token ? { Authorization: `Bearer ${token}` } : undefined;
+      // 컨트롤러에 추가한 단건 요약 API
+      const { data } = await api.get(`/contents/${contentId}/quiz/attempts/${attemptId}`, { headers });
+      // data: { attempt_id, score, correct_answers, total_questions, quiz_batch, created_at }
+      const scorePct = normalizePercent(data?.score);
+      return {
+        contentId,
+        title: `콘텐츠 #${contentId}`,
+        accuracy_rate: scorePct,
+        pinned: true,
+        batch: data?.quiz_batch,
+        created_at: data?.created_at,
+      };
+    } catch (e) {
+      console.warn("pinned attempt summary fetch failed:", e?.response?.status, e?.response?.data);
+      return null;
+    }
+  }, []);
 
   const loadDashboardData = useCallback(async () => {
     const token = localStorage.getItem("accessToken");
@@ -43,18 +71,15 @@ export default function DashBoardPage() {
     }
 
     try {
-      // 1) 내 콘텐츠 목록 (파일 수 카운트)
+      // 1) 내 콘텐츠 목록
       const contents = await fetchUserContents(); // [{ id|contentId, title, ... }]
       const list = Array.isArray(contents) ? contents : [];
       setFileCount(list.length);
 
-      // 2) Progress API 호출 시나리오
-      //    - 1순위: /progress/me
-      //    - 2순위: /progress/{userId} (JWT 또는 localStorage 등에서 획득)
-      //    - 실패 시: 구버전 폴백(각 콘텐츠의 attempts 기반 계산)
+      // 2) 우선 최신 Progress API로 시도
       let progressData = null;
 
-      // (1) /progress/me 시도
+      // (1) /progress/me
       try {
         const { data } = await api.get("/progress/me");
         if (Array.isArray(data)) progressData = data;
@@ -62,7 +87,7 @@ export default function DashBoardPage() {
         console.warn("progress/me 실패:", e?.response?.status, e?.response?.data);
       }
 
-      // (2) /progress/{userId} 시도
+      // (2) /progress/{userId}
       if (!progressData) {
         const payload = parseJwtPayload(token);
         const claimUserId = payload?.userId ?? payload?.uid ?? payload?.id ?? payload?.sub ?? null;
@@ -76,9 +101,9 @@ export default function DashBoardPage() {
         }
       }
 
-      // (3) 신규 Progress API 결과 → 표준 형태로 매핑
-      if (progressData && progressData.length > 0) {
-        const mapped = progressData.map((p) => {
+      /** Progress 응답을 표준화 */
+      const mapProgressToList = (pArr) => {
+        return (pArr || []).map((p) => {
           const cid = p.contentId ?? p.id ?? p.content_id;
           const title = p.title ?? p.name ?? `콘텐츠 #${cid}`;
           const scoreCandidate =
@@ -86,77 +111,104 @@ export default function DashBoardPage() {
           const accuracy_rate = normalizePercent(scoreCandidate);
           return { contentId: cid, title, accuracy_rate };
         });
+      };
 
-        mapped.sort((a, b) => b.accuracy_rate - a.accuracy_rate);
-        setProgressList(mapped);
-        setQuizCount(mapped.filter((r) => r.accuracy_rate > 0).length);
-        return; // 신규 API 성공 시 여기서 종료
+      /** 구버전 폴백: attempts 기반 */
+      const fallbackFromAttempts = async () => {
+        const headers = { Authorization: `Bearer ${token}` };
+
+        const toAccuracyFromAttempt = (attempt) => {
+          if (!attempt) return 0;
+          // 1) score 우선
+          if (attempt.score != null) {
+            const s = Number(attempt.score);
+            if (Number.isFinite(s)) return normalizePercent(s);
+          }
+          // 2) correct/total
+          const total = Number(attempt.total_questions ?? attempt.total ?? 0);
+          const correct = Number(attempt.correct_answers ?? attempt.correct ?? 0);
+          if (total > 0) return normalizePercent((correct / total) * 100);
+          return 0;
+        };
+
+        const fetchAllAttempts = async (contentId) => {
+          const { data } = await api.get(`/contents/${contentId}/quiz/attempts`, { headers });
+          return data;
+        };
+
+        const pickLatestAttempt = (attempts = []) => {
+          if (!Array.isArray(attempts) || attempts.length === 0) return null;
+          const maxBatch = attempts.reduce((m, a) => Math.max(m, Number(a?.batch) || 0), 0);
+          const inLatest = attempts.filter((a) => Number(a?.batch) === maxBatch);
+          if (inLatest.length === 0) return null;
+          inLatest.sort(
+            (a, b) =>
+              (Date.parse(b?.created_at || 0) - Date.parse(a?.created_at || 0)) ||
+              ((Number(b?.attempt_id) || 0) - (Number(a?.attempt_id) || 0))
+          );
+          return inLatest[0];
+        };
+
+        const results = await Promise.all(
+          (list || []).map(async (c) => {
+            const cid = c.id ?? c.contentId ?? c.content_id;
+            const title = c.title ?? c.name ?? `콘텐츠 #${cid}`;
+            try {
+              const data = await fetchAllAttempts(cid);
+              const attempts = Array.isArray(data?.attempts) ? data.attempts : [];
+              const latest = pickLatestAttempt(attempts);
+              const accuracy = toAccuracyFromAttempt(latest);
+              return { contentId: cid, title, accuracy_rate: accuracy };
+            } catch (e) {
+              console.warn("퀴즈 시도 로드 실패:", {
+                contentId: cid,
+                message: e?.message,
+                status: e?.response?.status,
+                data: e?.response?.data,
+              });
+              return { contentId: cid, title, accuracy_rate: 0 };
+            }
+          })
+        );
+
+        return results;
+      };
+
+      // 3) Progress 기준 목록 생성 or 폴백 생성
+      let mapped = progressData && progressData.length > 0
+        ? mapProgressToList(progressData)
+        : await fallbackFromAttempts();
+
+      // 4) ✅ ResultPage에서 넘어온 “고정 시도”가 있으면 해당 콘텐츠의 정답률을 덮어쓰기
+      if (pinnedAttemptId && pinnedContentId) {
+        const pinned = await fetchAttemptSummary(pinnedContentId, pinnedAttemptId, token);
+        if (pinned) {
+          // 리스트에서 해당 콘텐츠 항목 찾기
+          const idx = mapped.findIndex(
+            (x) => Number(x.contentId) === Number(pinnedContentId)
+          );
+          const title =
+            idx >= 0 ? mapped[idx].title : (list.find((c) => (c.id ?? c.contentId ?? c.content_id) === pinnedContentId)?.title ?? `콘텐츠 #${pinnedContentId}`);
+
+          const pinnedRow = {
+            contentId: pinnedContentId,
+            title,
+            accuracy_rate: pinned.accuracy_rate,
+            // pinned 표시를 원하면 UI에 활용 가능
+          };
+
+          if (idx >= 0) {
+            mapped[idx] = pinnedRow; // 덮어쓰기
+          } else {
+            mapped.push(pinnedRow); // 없으면 추가
+          }
+        }
       }
 
-      // (4) 폴백: 구버전 로직 (attempts 기반)
-      const headers = { Authorization: `Bearer ${token}` };
-
-      const toAccuracyFromAttempt = (attempt) => {
-        if (!attempt) return 0;
-
-        // 1) score 우선 (0~1 또는 0~100)
-        if (attempt.score != null) {
-          const s = Number(attempt.score);
-          if (Number.isFinite(s)) return normalizePercent(s);
-        }
-
-        // 2) correct / total 로 계산
-        const total = Number(attempt.total_questions ?? attempt.total ?? 0);
-        const correct = Number(attempt.correct_answers ?? attempt.correct ?? 0);
-        if (total > 0) {
-          return normalizePercent((correct / total) * 100);
-        }
-        return 0;
-      };
-
-      const fetchAllAttempts = async (contentId) => {
-        const { data } = await api.get(`/contents/${contentId}/quiz/attempts`, { headers });
-        return data;
-      };
-
-      const pickLatestAttempt = (attempts = []) => {
-        if (!Array.isArray(attempts) || attempts.length === 0) return null;
-        const maxBatch = attempts.reduce((m, a) => Math.max(m, Number(a?.batch) || 0), 0);
-        const inLatest = attempts.filter((a) => Number(a?.batch) === maxBatch);
-        if (inLatest.length === 0) return null;
-        inLatest.sort(
-          (a, b) =>
-            (Date.parse(b?.created_at || 0) - Date.parse(a?.created_at || 0)) ||
-            ((Number(b?.attempt_id) || 0) - (Number(a?.attempt_id) || 0))
-        );
-        return inLatest[0];
-      };
-
-      const results = await Promise.all(
-        (list || []).map(async (c) => {
-          const cid = c.id ?? c.contentId ?? c.content_id;
-          const title = c.title ?? c.name ?? `콘텐츠 #${cid}`;
-          try {
-            const data = await fetchAllAttempts(cid);
-            const attempts = Array.isArray(data?.attempts) ? data.attempts : [];
-            const latest = pickLatestAttempt(attempts);
-            const accuracy = toAccuracyFromAttempt(latest);
-            return { contentId: cid, title, accuracy_rate: accuracy };
-          } catch (e) {
-            console.warn("퀴즈 시도 로드 실패:", {
-              contentId: cid,
-              message: e?.message,
-              status: e?.response?.status,
-              data: e?.response?.data,
-            });
-            return { contentId: cid, title, accuracy_rate: 0 };
-          }
-        })
-      );
-
-      results.sort((a, b) => b.accuracy_rate - a.accuracy_rate);
-      setProgressList(results);
-      setQuizCount(results.filter((r) => r.accuracy_rate > 0).length);
+      // 5) 정렬 및 상태 반영
+      mapped.sort((a, b) => b.accuracy_rate - a.accuracy_rate);
+      setProgressList(mapped);
+      setQuizCount(mapped.filter((r) => r.accuracy_rate > 0).length);
     } catch (error) {
       console.error("대시보드 데이터 로드 실패:", {
         message: error?.message,
@@ -166,7 +218,7 @@ export default function DashBoardPage() {
         params: error?.config?.params,
       });
     }
-  }, [navigate]);
+  }, [navigate, pinnedAttemptId, pinnedContentId, fetchAttemptSummary]);
 
   useEffect(() => {
     loadDashboardData();
