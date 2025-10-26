@@ -8,7 +8,6 @@ import QuizResultPage from './pages/QuizResultPage';
 import PrivateRoute from './components/PrivateRoute';  
 import FileListPage from './pages/FileListPage';
 import SummaryPreviewPage from './pages/SummaryPreviewPage';
-import SummaryPage from './pages/SummaryPage';
 
 function App() {
   return (
@@ -28,10 +27,6 @@ function App() {
       <Route
         path="/summary-preview/:contentId"
         element={<PrivateRoute element={<SummaryPreviewPage />} />}
-      />
-      <Route
-        path="/summary/:contentId/:chapter"
-        element={<PrivateRoute element={<SummaryPage />} />}
       />
     </Routes>
   );

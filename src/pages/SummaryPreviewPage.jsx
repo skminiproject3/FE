@@ -23,7 +23,7 @@ const getScore = (r) => {
 };
 const getSources = (r) => (Array.isArray(r?.sources) ? r.sources : []);
 
-/** 요약 응답에서 PDF 경로 후보들을 최대한 뽑아낸다 */
+/** 요약 응답에서 PDF 경로 후보들을 최대한 뽑아낸다 (JSON일 때만 사용) */
 function extractPdfPathsFromSummaryResponse(data) {
   const bag = new Set();
 
@@ -32,30 +32,19 @@ function extractPdfPathsFromSummaryResponse(data) {
   if (typeof single === "string" && single.trim()) bag.add(single.replace(/\\/g, "/"));
 
   // 배열 키들
-  const arrs = [
-    data?.pdf_paths,
-    data?.pdfPaths,
-    data?.paths,
-    data?.source_paths,
-    data?.sourcePaths,
-  ].filter(Array.isArray);
-
+  const arrs = [data?.pdf_paths, data?.pdfPaths, data?.paths, data?.source_paths, data?.sourcePaths].filter(
+    Array.isArray
+  );
   arrs.forEach((arr) =>
     arr.forEach((p) => typeof p === "string" && p.trim() && bag.add(p.replace(/\\/g, "/")))
   );
 
-  // 객체 배열 안의 키들 (예: items[].pdf_path, chapters[].path 등)
+  // 객체 배열 안의 키들
   const objArrays = [data?.items, data?.chapters, data?.summaries, data?.sources].filter(Array.isArray);
   objArrays.forEach((arr) =>
     arr.forEach((o) => {
       const p =
-        o?.pdf_path ??
-        o?.pdfPath ??
-        o?.path ??
-        o?.source_path ??
-        o?.sourcePath ??
-        o?.ai_server_path ??
-        o?.uploaded_pdf;
+        o?.pdf_path ?? o?.pdfPath ?? o?.path ?? o?.source_path ?? o?.sourcePath ?? o?.ai_server_path ?? o?.uploaded_pdf;
       if (typeof p === "string" && p.trim()) bag.add(p.replace(/\\/g, "/"));
     })
   );
@@ -106,7 +95,7 @@ export default function SummaryPreviewPage() {
     return [];
   }, [uploadedPdfPath, detectedPdfPaths, contentId]);
 
-  // ✅ 전체 요약 로드 (GET /api/contents/{id}/summarize) + PDF 경로 자동 감지
+  // ✅ 전체 요약 로드 (GET /api/contents/{id}/summarize) + (JSON/text 모두 안전 처리)
   useEffect(() => {
     let ignore = false;
     (async () => {
@@ -115,22 +104,30 @@ export default function SummaryPreviewPage() {
       setInfo("");
 
       try {
-        const { data } = await api.get(`/contents/${contentId}/summarize`, {
-          headers: { Accept: "application/json" },
-        });
+        // 백엔드가 문자열을 반환할 수 있으니 text로 받는다.
+        const res = await api.get(`/contents/${contentId}/summarize`, { responseType: "text" });
+        const raw = res?.data;
 
-        // 요약 텍스트
-        setFullSummary(getText(data).trim());
+        // JSON이면 파싱해 텍스트/경로 추출, 아니면 그대로 텍스트로
+        let text = "";
+        try {
+          const parsed = JSON.parse(raw);
+          text = getText(parsed);
+          const paths = extractPdfPathsFromSummaryResponse(parsed);
+          if (!ignore && paths.length > 0) setDetectedPdfPaths(paths);
+        } catch {
+          text = String(raw ?? "");
+        }
 
-        // 요약 응답에서 PDF 경로 감지
-        const paths = extractPdfPathsFromSummaryResponse(data);
-        if (!ignore && paths.length > 0) setDetectedPdfPaths(paths);
-
+        if (!ignore) setFullSummary(text.trim());
       } catch (e) {
         if (!ignore) {
           const s = e?.response?.status;
           const d =
-            e?.response?.data?.message || e?.response?.data?.error || e?.message || "전체 요약을 불러오지 못했습니다.";
+            e?.response?.data?.message ||
+            e?.response?.data?.error ||
+            e?.message ||
+            "전체 요약을 불러오지 못했습니다.";
           setErrMsg(`(${s ?? "ERR"}) ${d}`);
           setFullSummary("");
           setDetectedPdfPaths([]);
@@ -139,7 +136,9 @@ export default function SummaryPreviewPage() {
         if (!ignore) setLoading(false);
       }
     })();
-    return () => { ignore = true; };
+    return () => {
+      ignore = true;
+    };
   }, [contentId]);
 
   // 🤖 AI 질문: /api/contents/{id}/ask
@@ -224,7 +223,7 @@ export default function SummaryPreviewPage() {
     }
   };
 
-  // ✅ 퀴즈 시작: 서버에서 생성 후 /quiz로 이동
+  // ✅ 퀴즈 시작: 서버에서 생성 후 /quiz로 이동(생성은 QuizPage에서 처리)
   const startQuiz = () => {
     try {
       // 복구용 저장
@@ -234,7 +233,9 @@ export default function SummaryPreviewPage() {
           "lastQuizConfig",
           JSON.stringify({ contentId, title, difficulty, count })
         );
-      } catch {alert("퀴즈생성에러")}
+      } catch {
+        alert("퀴즈생성에러");
+      }
 
       // state + 쿼리로 이동 (새로고침 대비)
       navigate(`/quiz?n=${count}`, {
@@ -249,7 +250,6 @@ export default function SummaryPreviewPage() {
       alert(msg);
     }
   };
-
 
   if (loading) return <p>불러오는 중...</p>;
 
@@ -266,9 +266,9 @@ export default function SummaryPreviewPage() {
         <div className="ai-selected-info" style={{ marginTop: 8 }}>
           {(resolvedPdfPaths.length > 0 || DEV_FALLBACK_PDF_MAP[contentId]) && (
             <div className="ai-selected-info" style={{ marginTop: 8 }}>
+              {/* UI 노출이 필요하면 여기에 표시 추가 가능 (클래스명 유지) */}
             </div>
           )}
-
         </div>
 
         {errMsg && <p className="summary-preview-error">{errMsg}</p>}

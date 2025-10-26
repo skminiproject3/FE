@@ -72,19 +72,19 @@ export const uploadContent = async (files, title, onProgress) => {
  * ============================ */
 
 /** ✅ 요약 생성: contentId로 트리거 (POST /api/contents/{id}/summarize) — 바디 없음 */
-export const createSummaryByContentId = async (contentId, chapter = null) => {
+export const createSummaryByContentId = async (contentId) => {
   const url = `/contents/${contentId}/summarize`;
-
-  // 현재 컨트롤러는 바디를 받지 않음. (SummaryController.summarizeFull)
-  if (chapter == null) {
-    const { data } = await api.post(url); // body 없이 호출
-    return data; // 서버가 String(resultJson) 반환
-  }
-
-  // 만약 나중에 chapter를 옵션으로 받도록 변경되면 아래 라인 사용
-  const { data } = await api.post(url, { chapter_request: chapter });
-  return data;
+  const { data } = await api.post(url, null, { responseType: "text" });
+  return data; // string
 };
+
+/** ✅ 챕터 요약 생성: (POST /api/contents/{id}/summaries) — { chapter: number }, 문자열 반환 */
+export const createChapterSummary = async (contentId, chapter) => {
+  const url = `/contents/${contentId}/summaries`;
+  const { data } = await api.post(url, { chapter: Number(chapter) }, { responseType: "text" });
+  return data; // string
+};
+
 
 /** (옵션) 요약 생성: 파일 경로 리스트로 트리거
  *  ⛔️ 백엔드에 /api/summaries (paths 기반) 엔드포인트가 있을 때만 사용
@@ -103,17 +103,18 @@ export const createSummaryByPaths = async (paths, chapter = null) => {
 export const uploadAndSummarize = async (files, title, onProgress, chapter = null) => {
   const uploadRes = await uploadContent(files, title, onProgress);
 
-  // 1) contentId 우선 (서버 컨트롤러에 정확히 맞음)
   const ids = extractContentIds(uploadRes);
   if (ids.length > 0) {
-    const summary = await createSummaryByContentId(ids[0], chapter);
+    const summary = chapter == null
+      ? await createSummaryByContentId(ids[0])
+      : await createChapterSummary(ids[0], chapter);
     return { upload: uploadRes, summary };
   }
 
-  // 2) (옵션) paths 엔드포인트가 실제로 있을 때만 시도
+  // (옵션) paths 기반 summarize는 백엔드에 있을 때만 사용. 없다면 이 블록은 삭제해도 됨.
   const paths = extractFilePaths(uploadRes);
-  if (paths.length > 0) {
-    const summary = await createSummaryByPaths(paths, chapter);
+  if (paths.length > 0 && chapter == null) {
+    const summary = await createSummaryByPaths(paths, null);
     return { upload: uploadRes, summary };
   }
 

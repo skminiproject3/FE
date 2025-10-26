@@ -8,6 +8,14 @@ import "../styles/QuizPage.css";
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
+// ✅ "하/중/상" 또는 영문이 들어와도 서버 enum(EASY/MEDIUM/HARD)로 정규화
+function normalizeDifficulty(d) {
+  const s = String(d || "").trim().toUpperCase();
+  if (["하", "LOW", "EASY"].includes(s)) return "EASY";
+  if (["상", "HIGH", "HARD"].includes(s)) return "HARD";
+  return "MEDIUM"; // 기본
+}
+
 export default function QuizPage() {
   const location = useLocation();
   const { state } = location || {};
@@ -26,7 +34,9 @@ export default function QuizPage() {
 
   const contentId = state?.contentId ?? stored.contentId;
   const titleFromState = state?.title ?? stored.title ?? "퀴즈";
-  const difficulty = state?.difficulty ?? stored.difficulty ?? "MEDIUM";
+  const difficultyRaw = state?.difficulty ?? stored.difficulty ?? "MEDIUM";
+  const difficulty = normalizeDifficulty(difficultyRaw);
+
   const numQuestions = (() => {
     const raw = state?.count ?? (Number.isFinite(nFromQuery) ? nFromQuery : stored.count);
     const n = Number(raw);
@@ -64,20 +74,20 @@ export default function QuizPage() {
         setLoading(true);
         setError("");
 
-        // 생성 요청
+        // ✅ 생성 요청 (백엔드 스펙: { numQuestions, difficulty })
         const body = { numQuestions, difficulty };
         const { data } = await api.post(`/contents/${contentId}/quiz/generate`, body);
 
-        // 응답 파싱
+        // ✅ 응답 파싱 (quizzes 배열 필수)
         const rawList = Array.isArray(data?.quizzes) ? data.quizzes : [];
         const list = rawList.slice(0, Math.max(1, Math.min(numQuestions, rawList.length)));
         if (list.length === 0) throw new Error(data?.message || "퀴즈 생성 결과가 비어 있습니다.");
 
-        // 배치 번호 보관
+        // ✅ 배치 번호 보관
         const batchFromResp = data?.batch ?? list[0]?.quiz_batch ?? null;
         setCurrentBatch(batchFromResp);
 
-        // 화면용 구조로 매핑 (보기는 배열로 강제)
+        // ✅ 화면용 구조로 매핑 (보기는 배열로 강제)
         const mapped = {
           title: titleFromState,
           questions: list.map((q) => {
@@ -139,12 +149,20 @@ export default function QuizPage() {
     if (!quiz || !contentId) return;
     setSubmitting(true);
     try {
-      // {quiz_id, user_answer:"A|B|C|D"}로 변환
+      // ✅ 서버 correct_answer가 "보기 텍스트"로 저장되어 있으므로, 텍스트를 기본으로 보냄
       const payloadAnswers = quiz.questions.map((q) => {
         const chosenId = answers[q.id];
         const idx = q.options.findIndex((o) => o.id === chosenId);
+
         const letter = idx >= 0 ? (q.options[idx].letter || LETTERS[idx] || "") : "";
-        return { quiz_id: q.id, user_answer: letter };
+        const text   = idx >= 0 ? String(q.options[idx].text) : "";
+
+        return {
+          quiz_id: q.id,
+          user_answer: text,             // ✅ 핵심: 텍스트 기준 채점
+          user_answer_letter: letter,    // (옵션) 서버에서 활용 가능
+          user_answer_index: idx,        // (옵션)
+        };
       });
 
       const endpoint =
@@ -154,36 +172,54 @@ export default function QuizPage() {
 
       const { data } = await api.post(endpoint, { answers: payloadAnswers });
 
-      // ✅ 결과 페이지가 항상 보기를 렌더링할 수 있도록, 채점 응답을 보강(enrich)
-      // 응답에 results가 있다면 quiz.questions와 매칭하여 options/문항 텍스트를 주입
-      const enrichResults =
-        Array.isArray(data?.results) ? data.results.map((r) => {
-          const q = quiz.questions.find((x) => x.id === (r.quiz_id ?? r.id));
-          const options = q ? q.options.map((o) => o.text) : undefined;
-          return {
-            ...r,
-            // 서버가 안 준 경우를 대비해 보기/문항 텍스트 보강
-            options: r.options ?? r.choices ?? options,
-            question: r.question ?? q?.text ?? r.question,
-          };
-        }) : [];
+      // ✅ 백엔드 응답이 { data: {...} } 형태일 수도 있어 안전 파싱
+      const server = data?.data ? data.data : data;
+
+      // ✅ results 목록이 어디에 있든 안전하게 꺼내기
+      const serverResults =
+        Array.isArray(server?.results) ? server.results :
+        Array.isArray(data?.results) ? data.results :
+        [];
+
+      // ✅ 결과를 화면에서 항상 렌더링 가능하도록 보강(enrich)
+      const enrichResults = serverResults.map((r) => {
+        const q = quiz.questions.find((x) => x.id === (r.quiz_id ?? r.id));
+        const options = q ? q.options.map((o) => o.text) : (r.options ?? r.choices);
+        return {
+          ...r,
+          question: r.question ?? q?.text ?? r.question,
+          options,
+        };
+      });
 
       const enrichedServerResult = {
-        ...data,
-        // 빈 배열이어도 항상 results 키 유지
+        status: data?.status ?? "success",
+        message: data?.message ?? server?.message ?? null,
+        batch: data?.batch ?? server?.batch ?? currentBatch ?? null,
+        attempt_id: server?.attempt_id ?? data?.attempt_id ?? null,
+        content_id: server?.content_id ?? data?.content_id ?? contentId,
+        final_total_score:
+          server?.final_total_score ??
+          server?.score ??
+          server?.accuracy ??
+          null,
+        correct_count:
+          server?.correct_count ??
+          server?.correct ??
+          null,
+        total_questions:
+          server?.total_questions ??
+          server?.total ??
+          quiz?.questions?.length ?? null,
         results: enrichResults,
-        // attempt_id/batch를 최대한 포함
-        attempt_id: data?.attempt_id ?? null,
-        batch: data?.batch ?? currentBatch ?? null,
-        content_id: data?.content_id ?? contentId,
       };
 
       navigate("/result", {
         state: {
           contentId,
-          attemptId: enrichedServerResult.attempt_id ?? null, // ✅ 폴백 조회용
+          attemptId: enrichedServerResult.attempt_id ?? null,
           title: `${quiz.title} 결과`,
-          serverResult: enrichedServerResult,                 // ✅ 보강된 결과
+          serverResult: enrichedServerResult,
           batch: enrichedServerResult.batch ?? null,
         },
       });
