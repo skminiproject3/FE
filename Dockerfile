@@ -8,7 +8,7 @@ RUN npm install -g npm@latest
 # package.json 먼저 복사 후 의존성 설치 (캐시 최적화)
 COPY package*.json ./
 
-# 💡 기존 node_modules 잔여 캐시 제거 후 설치
+# 기존 node_modules 잔여 캐시 제거 후 설치
 RUN rm -rf node_modules package-lock.json && npm install
 
 # 앱 소스 복사
@@ -18,7 +18,7 @@ COPY . .
 RUN echo "VITE_APIURL=/api" > .env.production && \
     echo "VITE_MODE=Prod" >> .env.production
 
-# ✅ Vite 프로덕션 빌드 실행
+# Vite 프로덕션 빌드 실행
 RUN npm run build
 
 # ====== 2단계: Nginx 실행 단계 ======
