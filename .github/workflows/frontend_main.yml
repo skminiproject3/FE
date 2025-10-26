@@ -1,0 +1,57 @@
+name: Build and Push Frontend Image (Auto Tag)
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+env:
+  DOCKER_IMAGE: miniproject3_frontend
+
+jobs:
+  Docker:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      # 최신 태그 가져와서 자동으로 +0.1 증가
+      - name: Get latest tag and bump version
+        id: bump
+        run: |
+          IMAGE=${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}
+          echo "Fetching tags for $IMAGE..."
+          LATEST_TAG=$(curl -s https://hub.docker.com/v2/repositories/$IMAGE/tags/?page_size=100 | jq -r '.results[].name' | grep -E '^[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          echo "Latest tag: $LATEST_TAG"
+
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_TAG="0.1"
+          else
+            NEW_TAG=$(awk -F. '{printf "%d.%d", $1, $2 + 1}' <<< "$LATEST_TAG")
+          fi
+
+          echo "New tag: $NEW_TAG"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
+
+      # 빌드 및 푸시
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          tags: ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ steps.bump.outputs.tag }}
+
+      - name: Image digest
+        run: echo "Pushed as ${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_IMAGE }}:${{ steps.bump.outputs.tag }}"
