@@ -63,7 +63,7 @@ function FileListPage() {
         <h1 className="file-title">업로드된 파일 목록</h1>
 
         {files.length === 0 ? (
-          <p className="file-empty">업로드된 파일이 없습니다...</p>
+          <p className="file-empty">업로드된 파일이 없습니다.</p>
         ) : (
           <ul className="file-list">
             {files.map((item) => (
