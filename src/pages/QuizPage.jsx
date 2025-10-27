@@ -12,11 +12,21 @@ const error = (...a) => DEBUG && console.error("[QUIZ]", ...a);
 
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
+// 표시용: "A. " 같은 접두 제거
+const stripLetterPrefix = (s) => String(s ?? "").replace(/^[A-F]\.\s*/i, "").trim();
+
 function normalizeDifficulty(d) {
   const s = String(d || "").trim().toUpperCase();
   if (["하", "LOW", "EASY"].includes(s)) return "EASY";
   if (["상", "HIGH", "HARD"].includes(s)) return "HARD";
   return "MEDIUM";
+}
+
+// 숫자 안전 변환(서버 응답이 string이어도 받기)
+function toNum(v, fallback = null) {
+  if (v == null) return fallback;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 export default function QuizPage() {
@@ -50,7 +60,7 @@ export default function QuizPage() {
     catch { return null; }
   });
 
-  // ✅ StrictMode 중복 호출 방지
+  // StrictMode 중복 호출 방지
   const didInit = useRef(false);
 
   useEffect(() => {
@@ -71,7 +81,7 @@ export default function QuizPage() {
         "lastQuizConfig",
         JSON.stringify({ contentId, title: titleFromState, difficulty, count: numQuestions })
       );
-    } catch {console.log("퀴즈 최근 업로드 에러")}
+    } catch { /* ignore */ }
 
     (async () => {
       try {
@@ -83,7 +93,7 @@ export default function QuizPage() {
         const res = await api.post(`/contents/${contentId}/quiz/generate`, body);
         log("RES /quiz/generate <-", res.status, res.data);
 
-        const data = res.data || {};
+        const data = res?.data ?? {};
         const rawList = Array.isArray(data?.quizzes) ? data.quizzes : [];
         if (!rawList.length) throw new Error(data?.message || "퀴즈 생성 결과가 비어 있습니다.");
 
@@ -91,23 +101,25 @@ export default function QuizPage() {
 
         const batchFromResp = data?.batch ?? list[0]?.quiz_batch ?? null;
         setCurrentBatch(batchFromResp);
-        try { sessionStorage.setItem("lastQuizBatch", JSON.stringify(batchFromResp)); } catch {console.log("배치번호 저장 에러")}
+        try { sessionStorage.setItem("lastQuizBatch", JSON.stringify(batchFromResp)); } catch { /* ignore */ }
 
+        // 옵션 원문(raw) 유지 + 표시용 text만 접두 제거
         const mapped = {
           title: titleFromState,
           questions: list.map((q) => {
             const opts = Array.isArray(q.options)
               ? q.options
               : typeof q.options === "string"
-              ? q.options.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
-              : [];
+                ? q.options.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
+                : [];
             return {
               id: q.quiz_id ?? q.id,
               text: q.question ?? q.stem ?? "",
               type: "single",
               options: opts.map((opt, i) => ({
                 id: `${q.quiz_id ?? q.id}_${i + 1}`,
-                text: String(opt),
+                raw: String(opt),               // 예: "B. 56비트"
+                text: stripLetterPrefix(opt),   // 예: "56비트"
                 letter: LETTERS[i] || "",
               })),
               explanation: q.explanation || "",
@@ -132,10 +144,9 @@ export default function QuizPage() {
           "퀴즈 생성 중 오류가 발생했습니다."
         );
       } finally {
-        setLoading(false); // ⬅️ cleanup과 무관하게 항상 내려줌
+        setLoading(false);
       }
     })();
-    // deps 빈 배열 + didInit 가드로 한 번만
   }, []); // eslint-disable-line
 
   const allAnswered = useMemo(() => {
@@ -160,6 +171,7 @@ export default function QuizPage() {
 
     setSubmitting(true);
     try {
+      // 선택 로그
       console.table(
         quiz.questions.map((q) => {
           const chosenId = answers[q.id];
@@ -168,65 +180,119 @@ export default function QuizPage() {
             qid: q.id,
             picked_letter: i >= 0 ? (q.options[i].letter || LETTERS[i]) : null,
             picked_text:   i >= 0 ? q.options[i].text : null,
+            picked_raw:    i >= 0 ? q.options[i].raw  : null,
           };
         })
       );
 
+      // 서버가 이해할 수 있는 풍부한 페이로드(슈퍼셋) — 그대로 유지
       const payloadAnswers = quiz.questions.map((q) => {
         const chosenId = answers[q.id];
-        const idx = q.options.findIndex((o) => o.id === chosenId);
-        const letter = idx >= 0 ? (q.options[idx].letter || LETTERS[idx] || "") : "";
-        const text   = idx >= 0 ? String(q.options[idx].text) : "";
+        const idx0 = q.options.findIndex((o) => o.id === chosenId); // 0-based
+        const idx1 = idx0 >= 0 ? idx0 + 1 : null;                   // 1-based
+        const letter = idx0 >= 0 ? (q.options[idx0].letter || LETTERS[idx0] || "") : "";
+        const raw    = idx0 >= 0 ? String(q.options[idx0].raw  ?? "") : ""; // "C. 56비트"
+        const text   = idx0 >= 0 ? String(q.options[idx0].text ?? "") : ""; // "56비트"
+
         return {
           quiz_id: q.id,
+          // 대표 키
           answer: letter,
-          answer_index: idx,
+          answer_index: idx0,
+          answer_index_1based: idx1,
+          user_answer: raw,
           answer_text: text,
-          user_answer: text,
+          // 레거시/대체 키
+          selected_option: raw,
+          selected_option_text: text,
+          selected_option_letter: letter,
+          selected_index: idx1,
+          selected: letter,
+          choice: letter,
+          option: raw,
+          option_index: idx1,
+          // 보조
           user_answer_letter: letter,
-          user_answer_index: idx,
+          user_answer_index: idx0,
+          user_answer_text: text,
         };
       });
 
+      const answers_map_letter = {};
+      const answers_map_text   = {};
+      const answers_map_raw    = {};
+      payloadAnswers.forEach(a => {
+        answers_map_letter[a.quiz_id] = a.answer;
+        answers_map_text[a.quiz_id]   = a.answer_text;
+        answers_map_raw[a.quiz_id]    = a.user_answer;
+      });
+
       const endpoint = `/contents/${contentId}/quiz/grade?batch=${currentBatch}`;
-      const body = { batch: currentBatch, answers: payloadAnswers };
+      const body = {
+        content_id: contentId,
+        batch: currentBatch,
+        answers: payloadAnswers,
+        // 서버가 map형만 읽더라도 채점되도록 보조 필드 포함
+        answers_map_letter,
+        answers_map_text,
+        answers_map_raw,
+        responses: payloadAnswers,
+        submissions: payloadAnswers,
+      };
+
+      console.table(payloadAnswers.map(a => ({
+        qid: a.quiz_id, letter: a.answer, idx0: a.answer_index, idx1: a.answer_index_1based, raw: a.user_answer, text: a.answer_text
+      })));
 
       log("REQ /quiz/grade ->", { endpoint, body });
       const res = await api.post(endpoint, body);
       log("RES /quiz/grade <-", res.status, res.data);
 
-      const top = res.data?.data ? res.data.data : res.data;
-      const resultsArr =
-        Array.isArray(top?.results) ? top.results :
-        Array.isArray(res.data?.results) ? res.data.results : [];
+      // ====== 여기부터는 "서버(DB) 결과만" 신뢰 ======
+      const payload = (res?.data && typeof res.data === "object") ? res.data : {};
+      const top = (payload && typeof payload.data === "object") ? payload.data : payload;
 
-      const enrichResults = resultsArr.map((r) => {
-        const q = quiz.questions.find((x) => x.id === (r.quiz_id ?? r.id));
-        const options = q ? q.options.map((o) => o.text) : (r.options ?? r.choices ?? []);
+      const serverResults =
+        Array.isArray(top?.results) ? top.results :
+        Array.isArray(payload?.results) ? payload.results : [];
+
+      // 결과 옵션이 비어있으면 로컬 옵션으로 보강(표시 안정성)
+      const enrichResults = serverResults.map((r) => {
+        const qid = r.quiz_id ?? r.id;
+        const localQ = quiz.questions.find((x) => String(x.id) === String(qid));
+        const fallbackOptions = localQ ? localQ.options.map(o => (o.raw ?? `${o.letter}. ${o.text}`)) : [];
         return {
           ...r,
-          question: r.question ?? q?.text ?? r?.question,
-          options,
+          options: (Array.isArray(r.options) && r.options.length) ? r.options : (r.choices ?? fallbackOptions),
         };
       });
 
       const enriched = {
-        status: res.data?.status ?? "success",
-        message: res.data?.message ?? top?.message ?? null,
-        batch: res.data?.batch ?? top?.batch ?? currentBatch ?? null,
-        attempt_id: top?.attempt_id ?? res.data?.attempt_id ?? null,
-        content_id: top?.content_id ?? res.data?.content_id ?? contentId,
-        final_total_score: top?.final_total_score ?? top?.score ?? top?.accuracy ?? null,
-        correct_count: top?.correct_count ?? top?.correct ?? null,
-        total_questions: top?.total_questions ?? top?.total ?? quiz?.questions?.length ?? null,
+        status: payload?.status ?? top?.status ?? "success",
+        message: payload?.message ?? top?.message ?? null,
+        batch: payload?.batch ?? top?.batch ?? currentBatch ?? null,
+        attempt_id: top?.attempt_id ?? payload?.attempt_id ?? null,
+        content_id: top?.content_id ?? payload?.content_id ?? contentId,
+        // ✅ 서버(DB) 점수/정답수/총문항 “그대로” 사용
+        final_total_score: toNum(top?.final_total_score ?? top?.score ?? top?.accuracy, 0),
+        correct_count:     toNum(top?.correct_count ?? top?.correct ?? top?.correct_answers, 0),
+        total_questions:   toNum(top?.total_questions ?? top?.total, quiz?.questions?.length ?? 0),
         results: enrichResults,
       };
 
-      log("GRADE CHECK", {
+      log("GRADE CHECK (server)", {
         score: enriched.final_total_score,
         correct: enriched.correct_count,
         total: enriched.total_questions,
       });
+
+      // (선택) 마지막 제출 스냅샷 저장
+      try {
+        sessionStorage.setItem(
+          "quiz:lastSubmit",
+          JSON.stringify({ contentId, batch: enriched.batch, attemptId: enriched.attempt_id })
+        );
+      } catch { /* ignore */ }
 
       navigate("/result", {
         state: {
@@ -286,6 +352,7 @@ export default function QuizPage() {
       <Sidebar />
       <main className="qp-content">
         <div className="qp-container">
+          {/* 상단 요약 바 */}
           <div className="qp-card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <h2 className="qp-title" style={{ margin: 0 }}>{quiz?.title}</h2>
             <div style={{ flex: 1 }} />
@@ -293,6 +360,7 @@ export default function QuizPage() {
             <div className="qp-pill">난이도: <b>{difficulty}</b></div>
           </div>
 
+          {/* 문항 리스트 */}
           <div className="qp-list">
             {quiz?.questions.map((q, idx) => (
               <article key={q.id} className="qp-card qp-item">
@@ -322,6 +390,7 @@ export default function QuizPage() {
             ))}
           </div>
 
+          {/* 하단 액션 */}
           <section className="qp-card qp-actions">
             <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
               ← 돌아가기
