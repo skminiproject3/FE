@@ -40,8 +40,7 @@ const parseOptions = (raw) => {
   }
   if (typeof raw === "object") {
     const keys = Object.keys(raw).sort((a, b) => {
-      const na = Number(a),
-        nb = Number(b);
+      const na = Number(a), nb = Number(b);
       if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
       return String(a).localeCompare(String(b));
     });
@@ -80,6 +79,56 @@ const resolveIndexFromAny = (ans, options) => {
   }
 
   return -1;
+};
+
+// index/letter로 텍스트 복구
+const textFromIndexOrLetter = (idx, letter, options) => {
+  const opts = Array.isArray(options) ? options : EMPTY_ARR;
+  if (Number.isFinite(idx) && idx >= 0 && idx < opts.length) return String(opts[idx]);
+  if (typeof letter === "string" && letter.trim()) {
+    const i = letter.trim().toUpperCase().charCodeAt(0) - 65;
+    if (i >= 0 && i < opts.length) return String(opts[i]);
+  }
+  return "";
+};
+
+// “user_answer”/“correct_answer”가 비어 있을 때 인덱스/레터로 복구
+const pickAnswerText = (r, role /* "user" | "correct" */, options) => {
+  const opts = Array.isArray(options) ? options : EMPTY_ARR;
+
+  if (role === "user") {
+    const byText = r.user_answer ?? r.userAnswer ?? r.user_selected ?? r.user ?? r.selected ?? "";
+    if (String(byText).trim()) return String(byText).trim();
+
+    // 인덱스/레터 기반 복구
+    const idx =
+      Number.isFinite(r.user_answer_index) ? r.user_answer_index :
+      Number.isFinite(r.userIndex) ? r.userIndex :
+      Number.isFinite(r.user_idx) ? r.user_idx :
+      null;
+
+    const letter = r.user_answer_letter ?? r.userLetter ?? r.user_label ?? "";
+
+    const recovered = textFromIndexOrLetter(idx, letter, opts);
+    if (recovered) return recovered;
+    return "";
+  }
+
+  // correct
+  const byText = r.correct_answer ?? r.answer ?? r.correct ?? "";
+  if (String(byText).trim()) return String(byText).trim();
+
+  const idx =
+    Number.isFinite(r.correct_index) ? r.correct_index :
+    Number.isFinite(r.answer_index) ? r.answer_index :
+    Number.isFinite(r.correct_idx) ? r.correct_idx :
+    null;
+
+  const letter = r.correct_letter ?? r.answer_letter ?? r.correct_label ?? "";
+
+  const recovered = textFromIndexOrLetter(idx, letter, opts);
+  if (recovered) return recovered;
+  return "";
 };
 
 // 텍스트/인덱스 기반 동등성 체크 (옵션이 없을 때도 안전)
@@ -130,13 +179,12 @@ export default function QuizResultPage() {
   const serverSnap = state?.serverResult || EMPTY_OBJ; // 컨트롤러 /grade 응답 그대로
   const batch = state?.batch ?? serverSnap?.batch ?? null;
   const contentId = state?.contentId ?? serverSnap?.content_id ?? null;
-  const attemptIdFromState = state?.attemptId ?? serverSnap?.attempt_id ?? null;
+  // const attemptIdFromState = state?.attemptId ?? serverSnap?.attempt_id ?? null;
 
   // ---- serverRoot 안정화 ----
   const serverRoot = useMemo(() => {
-    // /grade 응답은 최상위에 값이 들어있음
     if (serverSnap?.results || serverSnap?.detail || serverSnap?.items) return serverSnap;
-    if (serverSnap?.data) return serverSnap.data; // 혹시 data 래핑인 경우
+    if (serverSnap?.data) return serverSnap.data;
     return EMPTY_OBJ;
   }, [serverSnap]);
 
@@ -159,12 +207,10 @@ export default function QuizResultPage() {
   }, [serverRoot]);
 
   // ---- 시도 요약 폴백(총점/정답수/총문항 용) ----
-  const [attemptSummary, setAttemptSummary] = useState(null); // {attempt_id, score, correct_answers, total_questions,...}
+  const [attemptSummary, setAttemptSummary] = useState(null);
 
   useEffect(() => {
-    // 서버가 이미 results를 줬으면 요약도 서버값을 우선 사용하므로 필수는 아님.
-    // 그래도 서버 요약이 없다면(프론트 진입만 한 경우) 최신 시도 요약을 폴백으로 확보.
-    if (resultsRawFromServer.length > 0) return; // 이미 결과가 있으면 패스
+    if (resultsRawFromServer.length > 0) return;
     if (!contentId) return;
 
     let aborted = false;
@@ -186,9 +232,7 @@ export default function QuizResultPage() {
         if (!aborted) setAttemptSummary(attempts[0]);
       }
     })();
-    return () => {
-      aborted = true;
-    };
+    return () => { aborted = true; };
   }, [contentId, batch, resultsRawFromServer.length]);
 
   // ---- 렌더링용 표준 아이템 만들기 ----
@@ -208,9 +252,9 @@ export default function QuizResultPage() {
           r.options_obj
       );
 
-      const userRaw =
-        r.user_answer ?? r.userAnswer ?? r.user_selected ?? r.user ?? r.selected ?? "";
-      const correctRaw = r.correct_answer ?? r.answer ?? r.correct ?? "";
+      // ✅ 텍스트가 없을 경우 index/letter 로 복구
+      const userRaw = pickAnswerText(r, "user", options);
+      const correctRaw = pickAnswerText(r, "correct", options);
 
       // 파생 판정
       const derivedOk = answersEqual(userRaw, correctRaw, options);
@@ -363,9 +407,10 @@ export default function QuizResultPage() {
           </div>
 
           <section className="qp-card qp-actions" style={{ marginTop: 16 }}>
-            <button className="qp-btn qp-btn-primary" onClick={() => navigate("/board", {
-              state: { attemptId: attemptIdFromState ?? serverRoot?.attempt_id ?? null, contentId, batch }
-            })}>
+            <button
+              className="qp-btn qp-btn-primary"
+              onClick={() => navigate("/board")}
+            >
               대시보드로
             </button>
           </section>

@@ -1,93 +1,98 @@
 // src/pages/QuizPage.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import api from "../api/axios";
 import Sidebar from "../components/Sidebar";
 import "../styles/global.css";
 import "../styles/QuizPage.css";
 
+const DEBUG = true;
+const log   = (...a) => DEBUG && console.log("[QUIZ]", ...a);
+const error = (...a) => DEBUG && console.error("[QUIZ]", ...a);
+
 const LETTERS = ["A", "B", "C", "D", "E", "F"];
 
-// ✅ "하/중/상" 또는 영문이 들어와도 서버 enum(EASY/MEDIUM/HARD)로 정규화
 function normalizeDifficulty(d) {
   const s = String(d || "").trim().toUpperCase();
   if (["하", "LOW", "EASY"].includes(s)) return "EASY";
   if (["상", "HIGH", "HARD"].includes(s)) return "HARD";
-  return "MEDIUM"; // 기본
+  return "MEDIUM";
 }
 
 export default function QuizPage() {
-  const location = useLocation();
-  const { state } = location || {};
+  const { state } = useLocation() || {};
   const navigate = useNavigate();
 
-  // 복구 우선순위: location.state → URL ?n= → sessionStorage → 기본값
   const search = new URLSearchParams(location.search);
   const nFromQuery = Number(search.get("n"));
   const stored = (() => {
-    try {
-      return JSON.parse(sessionStorage.getItem("lastQuizConfig") || "{}");
-    } catch {
-      return {};
-    }
+    try { return JSON.parse(sessionStorage.getItem("lastQuizConfig") || "{}"); }
+    catch { return {}; }
   })();
 
-  const contentId = state?.contentId ?? stored.contentId;
+  const contentId      = state?.contentId ?? stored.contentId ?? null;
   const titleFromState = state?.title ?? stored.title ?? "퀴즈";
-  const difficultyRaw = state?.difficulty ?? stored.difficulty ?? "MEDIUM";
-  const difficulty = normalizeDifficulty(difficultyRaw);
+  const difficulty     = normalizeDifficulty(state?.difficulty ?? stored.difficulty ?? "MEDIUM");
 
   const numQuestions = (() => {
     const raw = state?.count ?? (Number.isFinite(nFromQuery) ? nFromQuery : stored.count);
     const n = Number(raw);
-    return Number.isFinite(n) && n > 0 ? n : 5;
+    return Number.isFinite(n) && n > 0 ? n : 4;
   })();
 
-  // 상태
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [quiz, setQuiz] = useState(null);           // {title, questions:[{id,text,options:[{id,text,letter}], explanation}]}
-  const [answers, setAnswers] = useState({});       // { [quiz_id]: optionId }
+  const [errMsg,  setErrMsg]  = useState("");
+  const [quiz,    setQuiz]    = useState(null);
+  const [answers, setAnswers] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [currentBatch, setCurrentBatch] = useState(null);
+  const [currentBatch, setCurrentBatch] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("lastQuizBatch") || "null"); }
+    catch { return null; }
+  });
+
+  // ✅ StrictMode 중복 호출 방지
+  const didInit = useRef(false);
 
   useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+
+    log("mount: location.state =", state);
+    log("config:", { contentId, titleFromState, difficulty, numQuestions });
+
     if (!contentId) {
-      setError("콘텐츠 ID가 없어 퀴즈를 생성할 수 없습니다.");
+      setErrMsg("콘텐츠 ID가 없어 퀴즈를 생성할 수 없습니다.");
       setLoading(false);
       return;
     }
 
-    // 복구용 저장
     try {
       sessionStorage.setItem(
         "lastQuizConfig",
         JSON.stringify({ contentId, title: titleFromState, difficulty, count: numQuestions })
       );
-    } catch {
-      // ignore
-    }
+    } catch {console.log("퀴즈 최근 업로드 에러")}
 
-    let ignore = false;
     (async () => {
       try {
         setLoading(true);
-        setError("");
+        setErrMsg("");
 
-        // ✅ 생성 요청 (백엔드 스펙: { numQuestions, difficulty })
         const body = { numQuestions, difficulty };
-        const { data } = await api.post(`/contents/${contentId}/quiz/generate`, body);
+        log("REQ /contents/:id/quiz/generate ->", body);
+        const res = await api.post(`/contents/${contentId}/quiz/generate`, body);
+        log("RES /quiz/generate <-", res.status, res.data);
 
-        // ✅ 응답 파싱 (quizzes 배열 필수)
+        const data = res.data || {};
         const rawList = Array.isArray(data?.quizzes) ? data.quizzes : [];
-        const list = rawList.slice(0, Math.max(1, Math.min(numQuestions, rawList.length)));
-        if (list.length === 0) throw new Error(data?.message || "퀴즈 생성 결과가 비어 있습니다.");
+        if (!rawList.length) throw new Error(data?.message || "퀴즈 생성 결과가 비어 있습니다.");
 
-        // ✅ 배치 번호 보관
+        const list = rawList.slice(0, Math.max(1, Math.min(numQuestions, rawList.length)));
+
         const batchFromResp = data?.batch ?? list[0]?.quiz_batch ?? null;
         setCurrentBatch(batchFromResp);
+        try { sessionStorage.setItem("lastQuizBatch", JSON.stringify(batchFromResp)); } catch {console.log("배치번호 저장 에러")}
 
-        // ✅ 화면용 구조로 매핑 (보기는 배열로 강제)
         const mapped = {
           title: titleFromState,
           questions: list.map((q) => {
@@ -96,13 +101,12 @@ export default function QuizPage() {
               : typeof q.options === "string"
               ? q.options.split(/\r?\n/).map((s) => s.trim()).filter(Boolean)
               : [];
-
             return {
-              id: q.quiz_id,
-              text: q.question,
+              id: q.quiz_id ?? q.id,
+              text: q.question ?? q.stem ?? "",
               type: "single",
               options: opts.map((opt, i) => ({
-                id: `${q.quiz_id}_${i + 1}`,
+                id: `${q.quiz_id ?? q.id}_${i + 1}`,
                 text: String(opt),
                 letter: LETTERS[i] || "",
               })),
@@ -111,152 +115,160 @@ export default function QuizPage() {
           }),
         };
 
-        if (!ignore) {
-          setQuiz(mapped);
-          setAnswers({});
-        }
+        console.table(
+          mapped.questions.map((q, i) => ({
+            i, qid: q.id, stem: (q.text || "").slice(0, 28), choices: q.options.length,
+          }))
+        );
+
+        setQuiz(mapped);
+        setAnswers({});
       } catch (e) {
-        if (!ignore) {
-          const detail =
-            e?.response?.data?.message ||
-            e?.response?.data?.error ||
-            e?.message ||
-            "퀴즈 생성 중 오류가 발생했습니다.";
-          setError(detail);
-        }
+        error("ERR /quiz/generate", e);
+        setErrMsg(
+          e?.response?.data?.message ||
+          e?.response?.data?.error ||
+          e?.message ||
+          "퀴즈 생성 중 오류가 발생했습니다."
+        );
       } finally {
-        if (!ignore) setLoading(false);
+        setLoading(false); // ⬅️ cleanup과 무관하게 항상 내려줌
       }
     })();
+    // deps 빈 배열 + didInit 가드로 한 번만
+  }, []); // eslint-disable-line
 
-    return () => {
-      ignore = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [contentId, difficulty, numQuestions]);
-
-  // 선택 핸들러
-  const handleSingle = (qid, optId) => setAnswers((p) => ({ ...p, [qid]: optId }));
-
-  // 제출 가능 여부
   const allAnswered = useMemo(() => {
     if (!quiz) return false;
     return quiz.questions.every((q) => !!answers[q.id]);
   }, [quiz, answers]);
 
-  // 제출 → /grade 저장
+  const handleSingle = (qid, optId) => {
+    setAnswers((prev) => {
+      const next = { ...prev, [qid]: optId };
+      log("SELECT", { qid, optId, snapshot: next });
+      return next;
+    });
+  };
+
   const handleSubmit = async () => {
     if (!quiz || !contentId) return;
+    if (currentBatch == null) {
+      alert("배치 정보가 없어 채점을 진행할 수 없습니다. 퀴즈를 다시 생성한 뒤 제출해 주세요.");
+      return;
+    }
+
     setSubmitting(true);
     try {
-      // ✅ 서버 correct_answer가 "보기 텍스트"로 저장되어 있으므로, 텍스트를 기본으로 보냄
+      console.table(
+        quiz.questions.map((q) => {
+          const chosenId = answers[q.id];
+          const i = q.options.findIndex((o) => o.id === chosenId);
+          return {
+            qid: q.id,
+            picked_letter: i >= 0 ? (q.options[i].letter || LETTERS[i]) : null,
+            picked_text:   i >= 0 ? q.options[i].text : null,
+          };
+        })
+      );
+
       const payloadAnswers = quiz.questions.map((q) => {
         const chosenId = answers[q.id];
         const idx = q.options.findIndex((o) => o.id === chosenId);
-
         const letter = idx >= 0 ? (q.options[idx].letter || LETTERS[idx] || "") : "";
         const text   = idx >= 0 ? String(q.options[idx].text) : "";
-
         return {
           quiz_id: q.id,
-          user_answer: text,             // ✅ 핵심: 텍스트 기준 채점
-          user_answer_letter: letter,    // (옵션) 서버에서 활용 가능
-          user_answer_index: idx,        // (옵션)
+          answer: letter,
+          answer_index: idx,
+          answer_text: text,
+          user_answer: text,
+          user_answer_letter: letter,
+          user_answer_index: idx,
         };
       });
 
-      const endpoint =
-        currentBatch != null
-          ? `/contents/${contentId}/quiz/grade?batch=${currentBatch}`
-          : `/contents/${contentId}/quiz/grade`;
+      const endpoint = `/contents/${contentId}/quiz/grade?batch=${currentBatch}`;
+      const body = { batch: currentBatch, answers: payloadAnswers };
 
-      const { data } = await api.post(endpoint, { answers: payloadAnswers });
+      log("REQ /quiz/grade ->", { endpoint, body });
+      const res = await api.post(endpoint, body);
+      log("RES /quiz/grade <-", res.status, res.data);
 
-      // ✅ 백엔드 응답이 { data: {...} } 형태일 수도 있어 안전 파싱
-      const server = data?.data ? data.data : data;
+      const top = res.data?.data ? res.data.data : res.data;
+      const resultsArr =
+        Array.isArray(top?.results) ? top.results :
+        Array.isArray(res.data?.results) ? res.data.results : [];
 
-      // ✅ results 목록이 어디에 있든 안전하게 꺼내기
-      const serverResults =
-        Array.isArray(server?.results) ? server.results :
-        Array.isArray(data?.results) ? data.results :
-        [];
-
-      // ✅ 결과를 화면에서 항상 렌더링 가능하도록 보강(enrich)
-      const enrichResults = serverResults.map((r) => {
+      const enrichResults = resultsArr.map((r) => {
         const q = quiz.questions.find((x) => x.id === (r.quiz_id ?? r.id));
-        const options = q ? q.options.map((o) => o.text) : (r.options ?? r.choices);
+        const options = q ? q.options.map((o) => o.text) : (r.options ?? r.choices ?? []);
         return {
           ...r,
-          question: r.question ?? q?.text ?? r.question,
+          question: r.question ?? q?.text ?? r?.question,
           options,
         };
       });
 
-      const enrichedServerResult = {
-        status: data?.status ?? "success",
-        message: data?.message ?? server?.message ?? null,
-        batch: data?.batch ?? server?.batch ?? currentBatch ?? null,
-        attempt_id: server?.attempt_id ?? data?.attempt_id ?? null,
-        content_id: server?.content_id ?? data?.content_id ?? contentId,
-        final_total_score:
-          server?.final_total_score ??
-          server?.score ??
-          server?.accuracy ??
-          null,
-        correct_count:
-          server?.correct_count ??
-          server?.correct ??
-          null,
-        total_questions:
-          server?.total_questions ??
-          server?.total ??
-          quiz?.questions?.length ?? null,
+      const enriched = {
+        status: res.data?.status ?? "success",
+        message: res.data?.message ?? top?.message ?? null,
+        batch: res.data?.batch ?? top?.batch ?? currentBatch ?? null,
+        attempt_id: top?.attempt_id ?? res.data?.attempt_id ?? null,
+        content_id: top?.content_id ?? res.data?.content_id ?? contentId,
+        final_total_score: top?.final_total_score ?? top?.score ?? top?.accuracy ?? null,
+        correct_count: top?.correct_count ?? top?.correct ?? null,
+        total_questions: top?.total_questions ?? top?.total ?? quiz?.questions?.length ?? null,
         results: enrichResults,
       };
+
+      log("GRADE CHECK", {
+        score: enriched.final_total_score,
+        correct: enriched.correct_count,
+        total: enriched.total_questions,
+      });
 
       navigate("/result", {
         state: {
           contentId,
-          attemptId: enrichedServerResult.attempt_id ?? null,
+          attemptId: enriched.attempt_id ?? null,
           title: `${quiz.title} 결과`,
-          serverResult: enrichedServerResult,
-          batch: enrichedServerResult.batch ?? null,
+          serverResult: enriched,
+          batch: enriched.batch ?? null,
         },
       });
     } catch (e) {
-      const msg =
+      error("ERR /quiz/grade", e);
+      alert(
         e?.response?.data?.message ||
         e?.response?.data?.error ||
         e?.message ||
-        "채점/저장 중 오류가 발생했습니다.";
-      alert(msg);
+        "채점/저장 중 오류가 발생했습니다."
+      );
     } finally {
       setSubmitting(false);
     }
   };
 
-  // ===== 렌더링 =====
   if (loading) {
     return (
       <div className="qp-layout">
         <Sidebar />
         <main className="qp-content">
-          <div className="qp-container">
-            <p>퀴즈 불러오는 중...</p>
-          </div>
+          <div className="qp-container"><p>퀴즈 불러오는 중...</p></div>
         </main>
       </div>
     );
   }
 
-  if (error) {
+  if (errMsg) {
     return (
       <div className="qp-layout">
         <Sidebar />
         <main className="qp-content">
           <div className="qp-container">
             <div className="qp-card" style={{ borderColor: "tomato" }}>
-              <p style={{ color: "tomato", margin: 0 }}>⚠ {error}</p>
+              <p style={{ color: "tomato", margin: 0 }}>⚠ {errMsg}</p>
             </div>
             <div className="qp-card qp-actions">
               <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
@@ -274,7 +286,6 @@ export default function QuizPage() {
       <Sidebar />
       <main className="qp-content">
         <div className="qp-container">
-          {/* 상단 요약 바 */}
           <div className="qp-card" style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <h2 className="qp-title" style={{ margin: 0 }}>{quiz?.title}</h2>
             <div style={{ flex: 1 }} />
@@ -282,7 +293,6 @@ export default function QuizPage() {
             <div className="qp-pill">난이도: <b>{difficulty}</b></div>
           </div>
 
-          {/* 문항 리스트 (카드형) */}
           <div className="qp-list">
             {quiz?.questions.map((q, idx) => (
               <article key={q.id} className="qp-card qp-item">
@@ -297,7 +307,6 @@ export default function QuizPage() {
                       key={opt.id}
                       className={`qp-option ${answers[q.id] === opt.id ? "is-selected" : ""}`}
                     >
-                      {/* 시멘틱 라디오 + 라벨 클릭 UX */}
                       <input
                         type="radio"
                         name={`q-${q.id}`}
@@ -313,7 +322,6 @@ export default function QuizPage() {
             ))}
           </div>
 
-          {/* 하단 액션 */}
           <section className="qp-card qp-actions">
             <button className="qp-btn qp-btn-secondary" onClick={() => navigate(-1)}>
               ← 돌아가기
